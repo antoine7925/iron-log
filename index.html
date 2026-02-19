@@ -76,6 +76,13 @@
       </svg>
     );
 
+    const Eye = ({ size = 24 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+        <circle cx="12" cy="12" r="3"></circle>
+      </svg>
+    );
+
     // Muscle groups with associated exercises
     const MUSCLE_GROUPS = {
       'Chest': ['Bench Press', 'Incline Dumbbell Press', 'Cable Flyes', 'Push-ups', 'Chest Dips'],
@@ -108,6 +115,7 @@
       const [deleteConfirmIndex, setDeleteConfirmIndex] = useState(null);
       const [stopwatchTime, setStopwatchTime] = useState(0);
       const [stopwatchRunning, setStopwatchRunning] = useState(false);
+      const [viewingWorkout, setViewingWorkout] = useState(null);
 
       // Stopwatch effect
       useEffect(() => {
@@ -172,9 +180,13 @@
 
         const initialExercises = groupExercises.map(name => {
           const lastExercise = lastWorkout?.exercises.find(e => e.name === name);
+          // Deep copy the sets array to avoid modifying the original workout
+          const copiedSets = lastExercise?.sets 
+            ? lastExercise.sets.map(set => ({ weight: set.weight, reps: set.reps }))
+            : [{ weight: 0, reps: 0 }];
           return {
             name,
-            sets: lastExercise?.sets || [{ weight: 0, reps: 0 }],
+            sets: copiedSets,
             completed: false
           };
         });
@@ -205,6 +217,11 @@
         } else {
           setDeleteConfirmIndex(index);
         }
+      };
+
+      const viewWorkout = (workout) => {
+        setViewingWorkout(workout);
+        setPage('detail');
       };
 
       const addSet = (exerciseIndex) => {
@@ -335,6 +352,57 @@
         }, 0);
       };
 
+      const getFilledSetsCount = (workout) => {
+        return workout.exercises.reduce((total, ex) => {
+          return total + ex.sets.filter(set => set.weight > 0 || set.reps > 0).length;
+        }, 0);
+      };
+
+      const getFilledExercisesCount = (workout) => {
+        return workout.exercises.filter(ex => 
+          ex.sets.some(set => set.weight > 0 || set.reps > 0)
+        ).length;
+      };
+
+      const getExercisePR = (exerciseName, muscleGroup) => {
+        const relevantWorkouts = workoutHistory.filter(w => w.muscleGroup === muscleGroup);
+        let maxWeight = 0;
+        let maxVolume = 0;
+        
+        relevantWorkouts.forEach(workout => {
+          const exercise = workout.exercises.find(ex => ex.name === exerciseName);
+          if (exercise) {
+            exercise.sets.forEach(set => {
+              if (set.weight > maxWeight) maxWeight = set.weight;
+              const volume = set.weight * set.reps;
+              if (volume > maxVolume) maxVolume = volume;
+            });
+          }
+        });
+        
+        return { maxWeight, maxVolume };
+      };
+
+      const compareWithPrevious = (currentWorkout) => {
+        if (!currentWorkout) return null;
+        
+        const previousWorkouts = workoutHistory
+          .filter(w => w.muscleGroup === currentWorkout.muscleGroup)
+          .sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        if (previousWorkouts.length === 0) return null;
+        
+        const previous = previousWorkouts[0];
+        const currentVolume = getTotalVolume(currentWorkout);
+        const previousVolume = getTotalVolume(previous);
+        
+        return {
+          volumeDiff: currentVolume - previousVolume,
+          volumePercent: previousVolume > 0 ? ((currentVolume - previousVolume) / previousVolume * 100) : 0,
+          previous
+        };
+      };
+
       return (
         <div className="app">
           <style>{`
@@ -409,10 +477,10 @@
 
             .stopwatch-time {
               font-family: 'Courier New', monospace;
-              font-size: 28px;
+              font-size: 36px;
               font-weight: bold;
               color: white;
-              min-width: 120px;
+              min-width: 140px;
               text-align: left;
               letter-spacing: 2px;
             }
@@ -581,6 +649,13 @@
               padding: 20px;
               margin-bottom: 15px;
               animation: slideIn 0.3s ease;
+              cursor: pointer;
+              transition: all 0.3s ease;
+            }
+
+            .workout-card:active {
+              background: rgba(255, 255, 255, 0.08);
+              transform: scale(0.98);
             }
 
             @keyframes slideIn {
@@ -646,6 +721,32 @@
               font-size: 13px;
               opacity: 0.7;
               line-height: 1.6;
+            }
+
+            .workout-card-actions {
+              display: flex;
+              gap: 8px;
+              align-items: center;
+            }
+
+            .view-workout-btn {
+              background: rgba(255, 102, 0, 0.15);
+              border: 1px solid rgba(255, 102, 0, 0.3);
+              color: #ff6600;
+              padding: 8px;
+              border-radius: 8px;
+              font-size: 12px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.3s ease;
+              display: flex;
+              align-items: center;
+              gap: 6px;
+            }
+
+            .view-workout-btn:active {
+              background: rgba(255, 102, 0, 0.25);
+              transform: scale(0.95);
             }
 
             .empty-state {
@@ -779,6 +880,10 @@
               margin-bottom: 10px;
             }
 
+            .set-row.readonly {
+              grid-template-columns: 40px 1fr 1fr;
+            }
+
             .set-number {
               font-size: 14px;
               font-weight: 700;
@@ -813,6 +918,18 @@
             .set-input:focus {
               outline: none;
               border-color: #ff6600;
+            }
+
+            .set-value {
+              background: rgba(0, 0, 0, 0.3);
+              border: 1px solid rgba(255, 255, 255, 0.1);
+              border-radius: 8px;
+              color: white;
+              padding: 10px;
+              font-size: 16px;
+              font-weight: 600;
+              text-align: center;
+              width: 100%;
             }
 
             .remove-set-btn {
@@ -1122,6 +1239,86 @@
               cursor: pointer;
             }
 
+            .detail-page {
+              min-height: 100vh;
+              padding-bottom: 80px;
+            }
+
+            .progress-indicator {
+              display: inline-flex;
+              align-items: center;
+              gap: 4px;
+              font-size: 12px;
+              font-weight: 600;
+              padding: 4px 8px;
+              border-radius: 6px;
+              margin-left: 8px;
+            }
+
+            .progress-indicator.up {
+              background: rgba(74, 222, 128, 0.15);
+              color: #4ade80;
+              border: 1px solid rgba(74, 222, 128, 0.3);
+            }
+
+            .progress-indicator.down {
+              background: rgba(239, 68, 68, 0.15);
+              color: #ef4444;
+              border: 1px solid rgba(239, 68, 68, 0.3);
+            }
+
+            .progress-indicator.same {
+              background: rgba(255, 255, 255, 0.05);
+              color: rgba(255, 255, 255, 0.6);
+              border: 1px solid rgba(255, 255, 255, 0.1);
+            }
+
+            .pr-badge {
+              display: inline-flex;
+              align-items: center;
+              gap: 4px;
+              background: linear-gradient(135deg, #ffd700 0%, #ffed4e 100%);
+              color: #000;
+              font-size: 10px;
+              font-weight: 700;
+              padding: 4px 8px;
+              border-radius: 6px;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              margin-left: 8px;
+              box-shadow: 0 2px 8px rgba(255, 215, 0, 0.4);
+            }
+
+            .previous-workout-section {
+              background: rgba(255, 102, 0, 0.05);
+              border: 1px solid rgba(255, 102, 0, 0.2);
+              border-radius: 12px;
+              padding: 15px;
+              margin-bottom: 20px;
+            }
+
+            .previous-workout-title {
+              font-size: 12px;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+              color: #ff6600;
+              margin-bottom: 10px;
+              font-weight: 600;
+            }
+
+            .set-comparison {
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              font-size: 11px;
+              color: rgba(255, 255, 255, 0.5);
+              margin-top: 4px;
+            }
+
+            .set-comparison.improved {
+              color: #4ade80;
+            }
+
             @media (min-width: 768px) {
               .app {
                 max-width: 428px;
@@ -1171,6 +1368,54 @@
                   Recent Workouts
                 </div>
 
+                {workoutHistory.length > 0 && (
+                  <div style={{
+                    background: 'linear-gradient(135deg, rgba(255, 102, 0, 0.1) 0%, rgba(255, 140, 0, 0.05) 100%)',
+                    border: '1px solid rgba(255, 102, 0, 0.3)',
+                    borderRadius: '16px',
+                    padding: '20px',
+                    marginBottom: '20px'
+                  }}>
+                    <div style={{ 
+                      fontSize: '14px', 
+                      fontWeight: '600', 
+                      color: '#ff6600', 
+                      marginBottom: '15px',
+                      textTransform: 'uppercase',
+                      letterSpacing: '1px'
+                    }}>
+                      Overall Progress
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px' }}>
+                      <div>
+                        <div className="stat-label">Total Workouts</div>
+                        <div className="stat-value" style={{ fontSize: '24px' }}>
+                          {workoutHistory.length}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="stat-label">This Week</div>
+                        <div className="stat-value" style={{ fontSize: '24px' }}>
+                          {(() => {
+                            const oneWeekAgo = new Date();
+                            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+                            return workoutHistory.filter(w => new Date(w.date) >= oneWeekAgo).length;
+                          })()}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="stat-label">Total Volume</div>
+                        <div className="stat-value" style={{ fontSize: '24px' }}>
+                          {(() => {
+                            const total = workoutHistory.reduce((sum, w) => sum + getTotalVolume(w), 0);
+                            return total >= 1000 ? `${(total / 1000).toFixed(0)}k` : total;
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {workoutHistory.length === 0 ? (
                   <div className="empty-state">
                     <div className="empty-state-icon">
@@ -1183,7 +1428,11 @@
                   </div>
                 ) : (
                   workoutHistory.map((workout, index) => (
-                    <div key={index} className="workout-card">
+                    <div key={index} className="workout-card" onClick={(e) => {
+                      if (!e.target.closest('.workout-card-actions')) {
+                        viewWorkout(workout);
+                      }
+                    }}>
                       <div className="workout-card-header">
                         <div>
                           <div className="workout-title">{workout.muscleGroup}</div>
@@ -1192,25 +1441,34 @@
                             {formatDate(workout.date)}
                           </div>
                         </div>
-                        <button 
-                          className={`delete-workout-btn ${deleteConfirmIndex === index ? 'confirm' : ''}`}
-                          onClick={() => handleDeleteClick(index)}
-                          onBlur={() => setDeleteConfirmIndex(null)}
-                        >
-                          <Trash2 size={14} />
-                          {deleteConfirmIndex === index ? 'Confirm?' : 'Delete'}
-                        </button>
+                        <div className="workout-card-actions" onClick={(e) => e.stopPropagation()}>
+                          <button 
+                            className="view-workout-btn"
+                            onClick={() => viewWorkout(workout)}
+                          >
+                            <Eye size={14} />
+                            View
+                          </button>
+                          <button 
+                            className={`delete-workout-btn ${deleteConfirmIndex === index ? 'confirm' : ''}`}
+                            onClick={() => handleDeleteClick(index)}
+                            onBlur={() => setDeleteConfirmIndex(null)}
+                          >
+                            <Trash2 size={14} />
+                            {deleteConfirmIndex === index ? 'Confirm?' : 'Delete'}
+                          </button>
+                        </div>
                       </div>
 
                       <div className="workout-stats">
                         <div className="stat">
                           <div className="stat-label">Exercises</div>
-                          <div className="stat-value">{workout.exercises.length}</div>
+                          <div className="stat-value">{getFilledExercisesCount(workout)}</div>
                         </div>
                         <div className="stat">
                           <div className="stat-label">Total Sets</div>
                           <div className="stat-value">
-                            {workout.exercises.reduce((sum, ex) => sum + ex.sets.length, 0)}
+                            {getFilledSetsCount(workout)}
                           </div>
                         </div>
                         <div className="stat">
@@ -1270,6 +1528,136 @@
                 </div>
               )}
             </>
+          ) : page === 'detail' ? (
+            <div className="detail-page">
+              <div className="workout-header">
+                <button className="back-btn" onClick={() => {
+                  setPage('history');
+                  setViewingWorkout(null);
+                }}>
+                  <ChevronLeft size={24} />
+                </button>
+                <h2>{viewingWorkout?.muscleGroup}</h2>
+              </div>
+
+              <div className="exercises-list">
+                <div style={{ marginBottom: '20px' }}>
+                  <div className="workout-date" style={{ fontSize: '14px', opacity: '0.7' }}>
+                    <Calendar size={16} />
+                    {formatDate(viewingWorkout?.date)}
+                  </div>
+                  <div className="workout-stats" style={{ marginTop: '15px' }}>
+                    <div className="stat">
+                      <div className="stat-label">Exercises</div>
+                      <div className="stat-value">{getFilledExercisesCount(viewingWorkout)}</div>
+                    </div>
+                    <div className="stat">
+                      <div className="stat-label">Total Sets</div>
+                      <div className="stat-value">
+                        {getFilledSetsCount(viewingWorkout)}
+                      </div>
+                    </div>
+                    <div className="stat">
+                      <div className="stat-label">Volume</div>
+                      <div className="stat-value">
+                        {getTotalVolume(viewingWorkout).toLocaleString()}
+                        {(() => {
+                          const comparison = compareWithPrevious(viewingWorkout);
+                          if (comparison && comparison.volumeDiff !== 0) {
+                            const isUp = comparison.volumeDiff > 0;
+                            return (
+                              <span className={`progress-indicator ${isUp ? 'up' : 'down'}`}>
+                                {isUp ? '↑' : '↓'} {Math.abs(comparison.volumePercent).toFixed(1)}%
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {(() => {
+                  const comparison = compareWithPrevious(viewingWorkout);
+                  if (comparison && comparison.previous) {
+                    return (
+                      <div className="previous-workout-section">
+                        <div className="previous-workout-title">
+                          vs. {formatDate(comparison.previous.date)}
+                        </div>
+                        <div style={{ fontSize: '13px', opacity: '0.8' }}>
+                          Previous Volume: {getTotalVolume(comparison.previous).toLocaleString()} lbs
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
+                {viewingWorkout?.exercises.map((exercise, exIndex) => {
+                  const pr = getExercisePR(exercise.name, viewingWorkout.muscleGroup);
+                  const maxSetWeight = Math.max(...exercise.sets.map(s => s.weight));
+                  const isPR = maxSetWeight > 0 && maxSetWeight >= pr.maxWeight && pr.maxWeight > 0;
+                  
+                  // Find previous workout with this exercise
+                  const previousWorkouts = workoutHistory
+                    .filter(w => w.muscleGroup === viewingWorkout.muscleGroup && w.date !== viewingWorkout.date)
+                    .sort((a, b) => new Date(b.date) - new Date(a.date));
+                  const previousExercise = previousWorkouts[0]?.exercises.find(e => e.name === exercise.name);
+                  
+                  return (
+                    <div key={exIndex} className={`exercise-card ${exercise.completed ? 'completed' : ''}`}>
+                      <div className="exercise-header">
+                        <div className="exercise-name">
+                          {exercise.name}
+                          {isPR && (
+                            <span className="pr-badge">
+                              ⭐ PR
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="sets-list">
+                        {exercise.sets.map((set, setIndex) => {
+                          const prevSet = previousExercise?.sets[setIndex];
+                          const weightImproved = prevSet && set.weight > prevSet.weight;
+                          const repsImproved = prevSet && set.weight === prevSet.weight && set.reps > prevSet.reps;
+                          
+                          return (
+                            <div key={setIndex}>
+                              <div className="set-row readonly">
+                                <div className="set-number">{setIndex + 1}</div>
+                                <div className="set-input-group">
+                                  <div className="set-input-label">Weight (lbs)</div>
+                                  <div className="set-value">
+                                    {set.weight || 0}
+                                    {weightImproved && <span style={{ color: '#4ade80', marginLeft: '4px' }}>↑</span>}
+                                  </div>
+                                </div>
+                                <div className="set-input-group">
+                                  <div className="set-input-label">Reps</div>
+                                  <div className="set-value">
+                                    {set.reps || 0}
+                                    {repsImproved && <span style={{ color: '#4ade80', marginLeft: '4px' }}>↑</span>}
+                                  </div>
+                                </div>
+                              </div>
+                              {prevSet && (
+                                <div className={`set-comparison ${(weightImproved || repsImproved) ? 'improved' : ''}`}>
+                                  Previous: {prevSet.weight}lbs × {prevSet.reps} reps
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           ) : (
             <div className="workout-page">
               <div className="workout-header">
@@ -1306,68 +1694,115 @@
               </div>
 
               <div className="exercises-list">
-                {exercises.map((exercise, exIndex) => (
-                  <div key={exIndex} className={`exercise-card ${exercise.completed ? 'completed' : ''}`}>
-                    <div className="exercise-header">
-                      <div className="exercise-name">{exercise.name}</div>
-                      <div className="exercise-actions">
-                        <button 
-                          className="exercise-plate-btn" 
-                          onClick={() => setActiveExerciseCalc(exIndex)}
-                        >
-                          Plates
-                        </button>
-                        <div
-                          className={`complete-checkbox ${exercise.completed ? 'checked' : ''}`}
-                          onClick={() => toggleExerciseComplete(exIndex)}
-                        >
-                          {exercise.completed && <Check size={18} />}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="sets-list">
-                      {exercise.sets.map((set, setIndex) => (
-                        <div key={setIndex} className="set-row">
-                          <div className="set-number">{setIndex + 1}</div>
-                          <div className="set-input-group">
-                            <div className="set-input-label">Weight (lbs)</div>
-                            <input
-                              type="number"
-                              className="set-input"
-                              value={set.weight || ''}
-                              onChange={(e) => updateSet(exIndex, setIndex, 'weight', e.target.value)}
-                              placeholder="0"
-                            />
-                          </div>
-                          <div className="set-input-group">
-                            <div className="set-input-label">Reps</div>
-                            <input
-                              type="number"
-                              className="set-input"
-                              value={set.reps || ''}
-                              onChange={(e) => updateSet(exIndex, setIndex, 'reps', e.target.value)}
-                              placeholder="0"
-                            />
-                          </div>
-                          {exercise.sets.length > 1 && (
-                            <button
-                              className="remove-set-btn"
-                              onClick={() => removeSet(exIndex, setIndex)}
-                            >
-                              ×
-                            </button>
+                {exercises.map((exercise, exIndex) => {
+                  const pr = getExercisePR(exercise.name, currentWorkout.muscleGroup);
+                  const maxSetWeight = Math.max(...exercise.sets.map(s => s.weight), 0);
+                  const isPR = maxSetWeight > 0 && maxSetWeight >= pr.maxWeight && pr.maxWeight > 0;
+                  
+                  // Find previous workout with this exercise
+                  const previousWorkouts = workoutHistory
+                    .filter(w => w.muscleGroup === currentWorkout.muscleGroup)
+                    .sort((a, b) => new Date(b.date) - new Date(a.date));
+                  const previousExercise = previousWorkouts[0]?.exercises.find(e => e.name === exercise.name);
+                  
+                  return (
+                    <div key={exIndex} className={`exercise-card ${exercise.completed ? 'completed' : ''}`}>
+                      <div className="exercise-header">
+                        <div className="exercise-name">
+                          {exercise.name}
+                          {isPR && (
+                            <span className="pr-badge">
+                              ⭐ NEW PR!
+                            </span>
                           )}
                         </div>
-                      ))}
-                    </div>
+                        <div className="exercise-actions">
+                          <button 
+                            className="exercise-plate-btn" 
+                            onClick={() => setActiveExerciseCalc(exIndex)}
+                          >
+                            Plates
+                          </button>
+                          <div
+                            className={`complete-checkbox ${exercise.completed ? 'checked' : ''}`}
+                            onClick={() => toggleExerciseComplete(exIndex)}
+                          >
+                            {exercise.completed && <Check size={18} />}
+                          </div>
+                        </div>
+                      </div>
 
-                    <button className="add-set-btn" onClick={() => addSet(exIndex)}>
-                      <Plus size={16} />
-                      Add Set
-                    </button>
-                  </div>
-                ))}
+                      {previousExercise && (
+                        <div style={{ fontSize: '11px', opacity: '0.6', marginBottom: '10px' }}>
+                          Last workout: {previousExercise.sets.map((s, i) => 
+                            `${s.weight}×${s.reps}`
+                          ).join(', ')}
+                        </div>
+                      )}
+
+                      <div className="sets-list">
+                        {exercise.sets.map((set, setIndex) => {
+                          const prevSet = previousExercise?.sets[setIndex];
+                          const weightImproved = prevSet && set.weight > prevSet.weight;
+                          const repsImproved = prevSet && set.weight === prevSet.weight && set.reps > prevSet.reps;
+                          const showImprovement = (weightImproved || repsImproved) && set.weight > 0 && set.reps > 0;
+                          
+                          return (
+                            <div key={setIndex}>
+                              <div className="set-row">
+                                <div className="set-number">
+                                  {setIndex + 1}
+                                  {showImprovement && <div style={{ color: '#4ade80', fontSize: '16px' }}>↑</div>}
+                                </div>
+                                <div className="set-input-group">
+                                  <div className="set-input-label">Weight (lbs)</div>
+                                  <input
+                                    type="number"
+                                    className="set-input"
+                                    value={set.weight || ''}
+                                    onChange={(e) => updateSet(exIndex, setIndex, 'weight', e.target.value)}
+                                    placeholder="0"
+                                    style={weightImproved && set.weight > 0 ? {
+                                      borderColor: '#4ade80',
+                                      background: 'rgba(74, 222, 128, 0.1)'
+                                    } : {}}
+                                  />
+                                </div>
+                                <div className="set-input-group">
+                                  <div className="set-input-label">Reps</div>
+                                  <input
+                                    type="number"
+                                    className="set-input"
+                                    value={set.reps || ''}
+                                    onChange={(e) => updateSet(exIndex, setIndex, 'reps', e.target.value)}
+                                    placeholder="0"
+                                    style={repsImproved && set.reps > 0 ? {
+                                      borderColor: '#4ade80',
+                                      background: 'rgba(74, 222, 128, 0.1)'
+                                    } : {}}
+                                  />
+                                </div>
+                                {exercise.sets.length > 1 && (
+                                  <button
+                                    className="remove-set-btn"
+                                    onClick={() => removeSet(exIndex, setIndex)}
+                                  >
+                                    ×
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <button className="add-set-btn" onClick={() => addSet(exIndex)}>
+                        <Plus size={16} />
+                        Add Set
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="add-exercise-section">
