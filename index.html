@@ -1,0 +1,1523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Iron Log">
+  <title>Iron Log - Workout Tracker</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // Lucide Icons (simplified inline)
+    const Plus = ({ size = 24 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+      </svg>
+    );
+
+    const ChevronDown = ({ size = 24 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="6 9 12 15 18 9"></polyline>
+      </svg>
+    );
+
+    const ChevronLeft = ({ size = 24 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="15 18 9 12 15 6"></polyline>
+      </svg>
+    );
+
+    const Check = ({ size = 24 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+    );
+
+    const TrendingUp = ({ size = 24 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+        <polyline points="17 6 23 6 23 12"></polyline>
+      </svg>
+    );
+
+    const Calendar = ({ size = 24 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+        <line x1="16" y1="2" x2="16" y2="6"></line>
+        <line x1="8" y1="2" x2="8" y2="6"></line>
+        <line x1="3" y1="10" x2="21" y2="10"></line>
+      </svg>
+    );
+
+    const Dumbbell = ({ size = 24, opacity = 1 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity={opacity}>
+        <path d="M14.4 14.4L9.6 9.6"></path>
+        <path d="M18.657 21.485a2 2 0 1 1-2.829-2.828l-1.767 1.768a2 2 0 1 1-2.829-2.829l6.364-6.364a2 2 0 1 1 2.829 2.829l-1.768 1.767a2 2 0 1 1 2.828 2.829z"></path>
+        <path d="M6.343 3.515a2 2 0 0 1 2.828 2.828l1.768-1.768a2 2 0 1 1 2.828 2.829l-6.364 6.364a2 2 0 1 1-2.828-2.829l1.767-1.767a2 2 0 1 1-2.828-2.828z"></path>
+      </svg>
+    );
+
+    const Trash2 = ({ size = 24 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="3 6 5 6 21 6"></polyline>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        <line x1="10" y1="11" x2="10" y2="17"></line>
+        <line x1="14" y1="11" x2="14" y2="17"></line>
+      </svg>
+    );
+
+    // Muscle groups with associated exercises
+    const MUSCLE_GROUPS = {
+      'Chest': ['Bench Press', 'Incline Dumbbell Press', 'Cable Flyes', 'Push-ups', 'Chest Dips'],
+      'Back': ['Deadlift', 'Pull-ups', 'Barbell Rows', 'Lat Pulldown', 'Cable Rows'],
+      'Legs': ['Squats', 'Leg Press', 'Romanian Deadlift', 'Leg Curls', 'Calf Raises'],
+      'Shoulders': ['Overhead Press', 'Lateral Raises', 'Face Pulls', 'Arnold Press', 'Shrugs'],
+      'Biceps': ['Barbell Curls', 'Hammer Curls', 'Preacher Curls', 'Cable Curls', 'Concentration Curls'],
+      'Triceps': ['Close Grip Bench', 'Tricep Dips', 'Overhead Extension', 'Pushdowns', 'Skull Crushers'],
+      'Core': ['Planks', 'Hanging Leg Raises', 'Cable Crunches', 'Russian Twists', 'Ab Wheel'],
+      'Quads': ['Front Squats', 'Leg Extensions', 'Bulgarian Split Squats', 'Hack Squats', 'Lunges'],
+      'Hamstrings': ['Romanian Deadlift', 'Leg Curls', 'Good Mornings', 'Nordic Curls', 'Glute Ham Raise'],
+      'Glutes': ['Hip Thrusts', 'Bulgarian Split Squats', 'Glute Kickbacks', 'Cable Pull-throughs', 'Sumo Deadlift']
+    };
+
+    function WorkoutTracker() {
+      const [page, setPage] = useState('history');
+      const [workoutHistory, setWorkoutHistory] = useState([]);
+      const [currentWorkout, setCurrentWorkout] = useState(null);
+      const [selectedGroup, setSelectedGroup] = useState('');
+      const [showGroupSelect, setShowGroupSelect] = useState(false);
+      const [exercises, setExercises] = useState([]);
+      const [showPlateCalculator, setShowPlateCalculator] = useState(false);
+      const [plateWeight, setPlateWeight] = useState('');
+      const [numPlates45, setNumPlates45] = useState('');
+      const [showAddExercise, setShowAddExercise] = useState(false);
+      const [newExerciseName, setNewExerciseName] = useState('');
+      const [customExercises, setCustomExercises] = useState({});
+      const [activeExerciseCalc, setActiveExerciseCalc] = useState(null);
+      const [exercisePlates45, setExercisePlates45] = useState('');
+      const [deleteConfirmIndex, setDeleteConfirmIndex] = useState(null);
+      const [stopwatchTime, setStopwatchTime] = useState(0);
+      const [stopwatchRunning, setStopwatchRunning] = useState(false);
+
+      // Stopwatch effect
+      useEffect(() => {
+        let interval;
+        if (stopwatchRunning) {
+          interval = setInterval(() => {
+            setStopwatchTime(prev => prev + 0.1);
+          }, 100);
+        }
+        return () => clearInterval(interval);
+      }, [stopwatchRunning]);
+
+      const formatStopwatchTime = (time) => {
+        const hours = Math.floor(time / 3600);
+        const minutes = Math.floor((time % 3600) / 60);
+        const seconds = Math.floor(time % 60);
+        
+        if (hours > 0) {
+          return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+      };
+
+      const startStopwatch = () => setStopwatchRunning(true);
+      const stopStopwatch = () => setStopwatchRunning(false);
+      const resetStopwatch = () => {
+        setStopwatchRunning(false);
+        setStopwatchTime(0);
+      };
+
+      useEffect(() => {
+        const saved = localStorage.getItem('workoutHistory');
+        if (saved) {
+          setWorkoutHistory(JSON.parse(saved));
+        }
+        const savedCustom = localStorage.getItem('customExercises');
+        if (savedCustom) {
+          setCustomExercises(JSON.parse(savedCustom));
+        }
+      }, []);
+
+      useEffect(() => {
+        if (workoutHistory.length > 0) {
+          localStorage.setItem('workoutHistory', JSON.stringify(workoutHistory));
+        }
+      }, [workoutHistory]);
+
+      useEffect(() => {
+        if (Object.keys(customExercises).length > 0) {
+          localStorage.setItem('customExercises', JSON.stringify(customExercises));
+        }
+      }, [customExercises]);
+
+      const startWorkout = (muscleGroup) => {
+        const defaultExercises = MUSCLE_GROUPS[muscleGroup] || [];
+        const customExercisesForGroup = customExercises[muscleGroup] || [];
+        const groupExercises = [...defaultExercises, ...customExercisesForGroup];
+        
+        const lastWorkout = workoutHistory
+          .filter(w => w.muscleGroup === muscleGroup)
+          .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+
+        const initialExercises = groupExercises.map(name => {
+          const lastExercise = lastWorkout?.exercises.find(e => e.name === name);
+          return {
+            name,
+            sets: lastExercise?.sets || [{ weight: 0, reps: 0 }],
+            completed: false
+          };
+        });
+
+        setCurrentWorkout({
+          muscleGroup,
+          date: new Date().toISOString(),
+          exercises: initialExercises
+        });
+        setExercises(initialExercises);
+        setPage('workout');
+        setShowGroupSelect(false);
+      };
+
+      const deleteWorkout = (index) => {
+        const updated = [...workoutHistory];
+        updated.splice(index, 1);
+        setWorkoutHistory(updated);
+        setDeleteConfirmIndex(null);
+        if (updated.length === 0) {
+          localStorage.removeItem('workoutHistory');
+        }
+      };
+
+      const handleDeleteClick = (index) => {
+        if (deleteConfirmIndex === index) {
+          deleteWorkout(index);
+        } else {
+          setDeleteConfirmIndex(index);
+        }
+      };
+
+      const addSet = (exerciseIndex) => {
+        const updated = [...exercises];
+        const lastSet = updated[exerciseIndex].sets[updated[exerciseIndex].sets.length - 1];
+        updated[exerciseIndex].sets.push({ weight: lastSet.weight, reps: lastSet.reps });
+        setExercises(updated);
+      };
+
+      const updateSet = (exerciseIndex, setIndex, field, value) => {
+        const updated = [...exercises];
+        updated[exerciseIndex].sets[setIndex][field] = parseFloat(value) || 0;
+        setExercises(updated);
+      };
+
+      const removeSet = (exerciseIndex, setIndex) => {
+        const updated = [...exercises];
+        if (updated[exerciseIndex].sets.length > 1) {
+          updated[exerciseIndex].sets.splice(setIndex, 1);
+          setExercises(updated);
+        }
+      };
+
+      const toggleExerciseComplete = (exerciseIndex) => {
+        const updated = [...exercises];
+        updated[exerciseIndex].completed = !updated[exerciseIndex].completed;
+        setExercises(updated);
+      };
+
+      const finishWorkout = () => {
+        const workout = {
+          ...currentWorkout,
+          exercises,
+          date: new Date().toISOString()
+        };
+        setWorkoutHistory([workout, ...workoutHistory]);
+        setPage('history');
+        setCurrentWorkout(null);
+        setExercises([]);
+      };
+
+      const calculatePlates = (weight) => {
+        const weightPerSide = weight / 2;
+        
+        if (weightPerSide <= 0) return 'Enter weight';
+        
+        const plates = [45, 35, 25, 10, 5, 2.5];
+        const result = [];
+        let remaining = weightPerSide;
+        
+        for (const plate of plates) {
+          const count = Math.floor(remaining / plate);
+          if (count > 0) {
+            result.push(`${count}x${plate}lb`);
+            remaining -= count * plate;
+          }
+        }
+        
+        if (remaining > 0.1) {
+          result.push(`+${remaining.toFixed(1)}lb`);
+        }
+        
+        return result.length > 0 ? result.join(' + ') : 'No plates needed';
+      };
+
+      const calculateWeightFrom45s = (numPlates) => {
+        if (!numPlates || numPlates <= 0) return 0;
+        return numPlates * 45 * 2;
+      };
+
+      const addCustomExercise = () => {
+        if (!newExerciseName.trim() || !currentWorkout) return;
+        
+        const muscleGroup = currentWorkout.muscleGroup;
+        const updated = { ...customExercises };
+        if (!updated[muscleGroup]) {
+          updated[muscleGroup] = [];
+        }
+        
+        if (!updated[muscleGroup].includes(newExerciseName.trim())) {
+          updated[muscleGroup].push(newExerciseName.trim());
+          setCustomExercises(updated);
+          
+          const newExercise = {
+            name: newExerciseName.trim(),
+            sets: [{ weight: 0, reps: 0 }],
+            completed: false
+          };
+          setExercises([...exercises, newExercise]);
+        }
+        
+        setNewExerciseName('');
+        setShowAddExercise(false);
+      };
+
+      const applyPlatesWeightToExercise = (exerciseIndex) => {
+        if (!exercisePlates45) return;
+        
+        const calculatedWeight = calculateWeightFrom45s(parseFloat(exercisePlates45));
+        const updated = [...exercises];
+        const lastSet = updated[exerciseIndex].sets[updated[exerciseIndex].sets.length - 1];
+        
+        updated[exerciseIndex].sets.push({ 
+          weight: calculatedWeight, 
+          reps: lastSet.reps || 0 
+        });
+        
+        setExercises(updated);
+        setActiveExerciseCalc(null);
+        setExercisePlates45('');
+      };
+
+      const formatDate = (dateString) => {
+        const date = new Date(dateString);
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        if (date.toDateString() === today.toDateString()) return 'Today';
+        if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+        
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      };
+
+      const getTotalVolume = (workout) => {
+        return workout.exercises.reduce((total, ex) => {
+          return total + ex.sets.reduce((sum, set) => sum + (set.weight * set.reps), 0);
+        }, 0);
+      };
+
+      return (
+        <div className="app">
+          <style>{`
+            @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap');
+            
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
+
+            body {
+              font-family: 'Inter', sans-serif;
+              background: #0a0a0a;
+              color: #fff;
+              -webkit-font-smoothing: antialiased;
+              overscroll-behavior: none;
+            }
+
+            .app {
+              min-height: 100vh;
+              background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+              padding-bottom: 20px;
+            }
+
+            .header {
+              background: linear-gradient(135deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%);
+              padding: 42px 20px 21px;
+              box-shadow: 0 10px 40px rgba(255, 69, 0, 0.5);
+              position: relative;
+              overflow: hidden;
+            }
+
+            .header::before {
+              content: '';
+              position: absolute;
+              top: 0;
+              left: 0;
+              right: 0;
+              bottom: 0;
+              background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+              opacity: 0.5;
+            }
+
+            .header-content {
+              position: relative;
+              z-index: 1;
+              text-align: center;
+            }
+
+            .header h1 {
+              font-family: 'Bebas Neue', sans-serif;
+              font-size: 60px;
+              letter-spacing: 6px;
+              margin-bottom: 0;
+              text-shadow: 3px 3px 6px rgba(0,0,0,0.4);
+            }
+
+            /* Stopwatch */
+            .stopwatch-container {
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              gap: 12px;
+              padding: 12px 20px;
+              background: linear-gradient(135deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.6) 100%);
+              border-radius: 16px;
+              border: 1px solid rgba(255, 102, 0, 0.3);
+              box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+              margin: 12px 20px 8px;
+            }
+
+            .stopwatch-time {
+              font-family: 'Courier New', monospace;
+              font-size: 28px;
+              font-weight: bold;
+              color: white;
+              min-width: 120px;
+              text-align: left;
+              letter-spacing: 2px;
+            }
+
+            .stopwatch-controls {
+              display: flex;
+              gap: 8px;
+            }
+
+            .stopwatch-btn {
+              width: 36px;
+              height: 36px;
+              border: none;
+              border-radius: 50%;
+              color: white;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 14px;
+              transition: all 0.3s ease;
+            }
+
+            .stopwatch-btn.play {
+              background: #4ade80;
+            }
+
+            .stopwatch-btn.pause {
+              background: #ff6600;
+            }
+
+            .stopwatch-btn.reset {
+              background: rgba(255, 255, 255, 0.2);
+            }
+
+            .stopwatch-btn:active {
+              transform: scale(0.95);
+            }
+
+            .start-workout-section {
+              padding: 20px;
+              margin-top: -15px;
+            }
+
+            .start-btn {
+              width: 100%;
+              background: linear-gradient(135deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%);
+              color: white;
+              border: none;
+              padding: 18px;
+              border-radius: 16px;
+              font-size: 18px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+              cursor: pointer;
+              box-shadow: 0 8px 24px rgba(255, 69, 0, 0.5);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 10px;
+              transition: all 0.3s ease;
+            }
+
+            .start-btn:active {
+              transform: scale(0.98);
+              box-shadow: 0 4px 12px rgba(255, 69, 0, 0.5);
+            }
+
+            .muscle-group-modal {
+              position: fixed;
+              top: 0;
+              left: 0;
+              right: 0;
+              bottom: 0;
+              background: rgba(0, 0, 0, 0.9);
+              z-index: 1000;
+              display: flex;
+              flex-direction: column;
+              animation: fadeIn 0.3s ease;
+            }
+
+            @keyframes fadeIn {
+              from { opacity: 0; }
+              to { opacity: 1; }
+            }
+
+            .modal-header {
+              padding: 42px 20px 20px;
+              background: linear-gradient(135deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%);
+            }
+
+            .modal-header h2 {
+              font-family: 'Bebas Neue', sans-serif;
+              font-size: 28px;
+              letter-spacing: 2px;
+            }
+
+            .muscle-groups {
+              flex: 1;
+              overflow-y: auto;
+              padding: 20px;
+              padding-bottom: 150px;
+            }
+
+            .muscle-group-btn {
+              width: 100%;
+              background: rgba(255, 255, 255, 0.05);
+              border: 2px solid rgba(255, 69, 0, 0.4);
+              color: white;
+              padding: 20px;
+              border-radius: 12px;
+              font-size: 18px;
+              font-weight: 600;
+              cursor: pointer;
+              margin-bottom: 12px;
+              transition: all 0.3s ease;
+              text-align: left;
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+            }
+
+            .muscle-group-btn:active {
+              background: rgba(255, 69, 0, 0.2);
+              border-color: #ff4500;
+              transform: scale(0.98);
+            }
+
+            .close-modal-btn {
+              position: fixed;
+              bottom: 70px;
+              left: 20px;
+              right: 20px;
+              background: rgba(255, 255, 255, 0.1);
+              border: 2px solid rgba(255, 255, 255, 0.2);
+              color: white;
+              padding: 16px;
+              border-radius: 12px;
+              font-size: 16px;
+              font-weight: 600;
+              cursor: pointer;
+              backdrop-filter: blur(10px);
+            }
+
+            .history-section {
+              padding: 20px;
+              padding-bottom: 80px;
+            }
+
+            .section-title {
+              font-family: 'Bebas Neue', sans-serif;
+              font-size: 24px;
+              letter-spacing: 2px;
+              margin-bottom: 15px;
+              color: #ff6600;
+              display: flex;
+              align-items: center;
+              gap: 10px;
+            }
+
+            .workout-card {
+              background: rgba(255, 255, 255, 0.05);
+              border: 1px solid rgba(255, 255, 255, 0.1);
+              border-radius: 16px;
+              padding: 20px;
+              margin-bottom: 15px;
+              animation: slideIn 0.3s ease;
+            }
+
+            @keyframes slideIn {
+              from {
+                opacity: 0;
+                transform: translateY(20px);
+              }
+              to {
+                opacity: 1;
+                transform: translateY(0);
+              }
+            }
+
+            .workout-card-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              margin-bottom: 15px;
+            }
+
+            .workout-title {
+              font-size: 20px;
+              font-weight: 700;
+              color: #ff6600;
+              margin-bottom: 5px;
+            }
+
+            .workout-date {
+              font-size: 13px;
+              opacity: 0.6;
+              display: flex;
+              align-items: center;
+              gap: 5px;
+            }
+
+            .workout-stats {
+              display: flex;
+              gap: 15px;
+              margin-bottom: 15px;
+              padding-top: 15px;
+              border-top: 1px solid rgba(255, 255, 255, 0.1);
+            }
+
+            .stat {
+              flex: 1;
+            }
+
+            .stat-label {
+              font-size: 11px;
+              opacity: 0.5;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+              margin-bottom: 5px;
+            }
+
+            .stat-value {
+              font-size: 20px;
+              font-weight: 700;
+              color: #ff6600;
+            }
+
+            .exercise-summary {
+              font-size: 13px;
+              opacity: 0.7;
+              line-height: 1.6;
+            }
+
+            .empty-state {
+              text-align: center;
+              padding: 60px 20px;
+              opacity: 0.5;
+            }
+
+            .empty-state-icon {
+              margin-bottom: 20px;
+            }
+
+            .workout-page {
+              min-height: 100vh;
+            }
+
+            .workout-header {
+              background: linear-gradient(135deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%);
+              padding: 42px 20px 20px;
+              display: flex;
+              align-items: center;
+              gap: 15px;
+              box-shadow: 0 4px 24px rgba(255, 69, 0, 0.4);
+            }
+
+            .workout-header h2 {
+              font-family: 'Bebas Neue', sans-serif;
+              font-size: 28px;
+              letter-spacing: 2px;
+              flex: 1;
+            }
+
+            .back-btn {
+              background: rgba(255, 255, 255, 0.2);
+              border: none;
+              color: white;
+              width: 40px;
+              height: 40px;
+              border-radius: 10px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              cursor: pointer;
+              backdrop-filter: blur(10px);
+            }
+
+            .exercises-list {
+              padding: 20px;
+              padding-bottom: 180px;
+            }
+
+            .exercise-card {
+              background: rgba(255, 255, 255, 0.05);
+              border: 1px solid rgba(255, 255, 255, 0.1);
+              border-radius: 16px;
+              padding: 20px;
+              margin-bottom: 20px;
+              position: relative;
+            }
+
+            .exercise-card.completed {
+              border-color: #4ade80;
+              background: rgba(74, 222, 128, 0.1);
+            }
+
+            .exercise-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-start;
+              margin-bottom: 15px;
+            }
+
+            .exercise-name {
+              font-size: 18px;
+              font-weight: 700;
+              color: #fff;
+              flex: 1;
+            }
+
+            .exercise-actions {
+              display: flex;
+              align-items: center;
+              gap: 8px;
+            }
+
+            .exercise-plate-btn {
+              background: rgba(255, 102, 0, 0.15);
+              border: 1px solid rgba(255, 102, 0, 0.3);
+              color: #ff6600;
+              padding: 6px 12px;
+              border-radius: 6px;
+              font-size: 11px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.3s ease;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+
+            .exercise-plate-btn:active {
+              background: rgba(255, 102, 0, 0.25);
+              transform: scale(0.95);
+            }
+
+            .complete-checkbox {
+              width: 28px;
+              height: 28px;
+              border: 2px solid rgba(255, 255, 255, 0.3);
+              border-radius: 8px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              cursor: pointer;
+              transition: all 0.3s ease;
+            }
+
+            .complete-checkbox.checked {
+              background: #4ade80;
+              border-color: #4ade80;
+            }
+
+            .sets-list {
+              margin-bottom: 15px;
+            }
+
+            .set-row {
+              display: grid;
+              grid-template-columns: 40px 1fr 1fr 40px;
+              gap: 10px;
+              align-items: center;
+              margin-bottom: 10px;
+            }
+
+            .set-number {
+              font-size: 14px;
+              font-weight: 700;
+              opacity: 0.5;
+            }
+
+            .set-input-group {
+              display: flex;
+              flex-direction: column;
+              gap: 5px;
+            }
+
+            .set-input-label {
+              font-size: 10px;
+              opacity: 0.5;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+
+            .set-input {
+              background: rgba(0, 0, 0, 0.3);
+              border: 1px solid rgba(255, 255, 255, 0.2);
+              border-radius: 8px;
+              color: white;
+              padding: 10px;
+              font-size: 16px;
+              font-weight: 600;
+              text-align: center;
+              width: 100%;
+            }
+
+            .set-input:focus {
+              outline: none;
+              border-color: #ff6600;
+            }
+
+            .remove-set-btn {
+              background: rgba(239, 68, 68, 0.2);
+              border: 1px solid rgba(239, 68, 68, 0.3);
+              color: #ef4444;
+              width: 36px;
+              height: 36px;
+              border-radius: 8px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              cursor: pointer;
+              font-size: 20px;
+              font-weight: 700;
+            }
+
+            .add-set-btn {
+              width: 100%;
+              background: rgba(255, 69, 0, 0.1);
+              border: 2px dashed rgba(255, 69, 0, 0.4);
+              color: #ff6600;
+              padding: 12px;
+              border-radius: 8px;
+              font-size: 14px;
+              font-weight: 600;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 8px;
+              transition: all 0.3s ease;
+            }
+
+            .add-set-btn:active {
+              background: rgba(255, 69, 0, 0.2);
+              transform: scale(0.98);
+            }
+
+            .finish-workout-btn {
+              position: fixed;
+              bottom: 70px;
+              left: 20px;
+              right: 20px;
+              background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+              color: white;
+              border: none;
+              padding: 18px;
+              border-radius: 16px;
+              font-size: 18px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+              cursor: pointer;
+              box-shadow: 0 8px 24px rgba(74, 222, 128, 0.4);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 10px;
+            }
+
+            .finish-workout-btn:active {
+              transform: scale(0.98);
+            }
+
+            .delete-workout-btn {
+              background: rgba(239, 68, 68, 0.15);
+              border: 1px solid rgba(239, 68, 68, 0.3);
+              color: #ef4444;
+              padding: 8px;
+              border-radius: 8px;
+              font-size: 12px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.3s ease;
+              display: flex;
+              align-items: center;
+              gap: 6px;
+              min-width: 80px;
+              justify-content: center;
+            }
+
+            .delete-workout-btn:active {
+              background: rgba(239, 68, 68, 0.25);
+              transform: scale(0.95);
+            }
+
+            .delete-workout-btn.confirm {
+              background: rgba(239, 68, 68, 0.9);
+              border-color: #ef4444;
+              color: white;
+              animation: pulse 0.5s ease-in-out;
+            }
+
+            @keyframes pulse {
+              0%, 100% { transform: scale(1); }
+              50% { transform: scale(1.05); }
+            }
+
+            .plate-calc-btn {
+              background: rgba(255, 255, 255, 0.05);
+              border: 1px solid rgba(255, 255, 255, 0.2);
+              color: white;
+              padding: 8px 16px;
+              border-radius: 8px;
+              font-size: 12px;
+              font-weight: 600;
+              cursor: pointer;
+              margin-left: 8px;
+              transition: all 0.3s ease;
+            }
+
+            .plate-calc-btn:active {
+              background: rgba(255, 255, 255, 0.1);
+            }
+
+            .calculator-modal {
+              position: fixed;
+              top: 0;
+              left: 0;
+              right: 0;
+              bottom: 0;
+              background: rgba(0, 0, 0, 0.95);
+              z-index: 2000;
+              display: flex;
+              flex-direction: column;
+              padding: 20px;
+              justify-content: center;
+            }
+
+            .calculator-content {
+              background: rgba(255, 255, 255, 0.05);
+              border: 1px solid rgba(255, 255, 255, 0.1);
+              border-radius: 20px;
+              padding: 30px;
+              max-width: 400px;
+              margin: 0 auto;
+              width: 100%;
+            }
+
+            .calculator-title {
+              font-family: 'Bebas Neue', sans-serif;
+              font-size: 28px;
+              letter-spacing: 2px;
+              color: #ff6600;
+              margin-bottom: 20px;
+              text-align: center;
+            }
+
+            .calculator-input {
+              width: 100%;
+              background: rgba(0, 0, 0, 0.3);
+              border: 2px solid rgba(255, 255, 255, 0.2);
+              border-radius: 12px;
+              color: white;
+              padding: 15px;
+              font-size: 18px;
+              font-weight: 600;
+              text-align: center;
+              margin-bottom: 15px;
+            }
+
+            .calculator-input:focus {
+              outline: none;
+              border-color: #ff6600;
+            }
+
+            .calculator-result {
+              background: rgba(255, 102, 0, 0.1);
+              border: 1px solid rgba(255, 102, 0, 0.3);
+              border-radius: 12px;
+              padding: 20px;
+              margin: 20px 0;
+              text-align: center;
+            }
+
+            .result-label {
+              font-size: 12px;
+              opacity: 0.6;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+              margin-bottom: 8px;
+            }
+
+            .result-value {
+              font-size: 24px;
+              font-weight: 700;
+              color: #ff6600;
+              font-family: 'Bebas Neue', sans-serif;
+              letter-spacing: 1px;
+            }
+
+            .modal-btn {
+              width: 100%;
+              background: rgba(255, 255, 255, 0.1);
+              border: 1px solid rgba(255, 255, 255, 0.2);
+              color: white;
+              padding: 15px;
+              border-radius: 12px;
+              font-size: 16px;
+              font-weight: 600;
+              cursor: pointer;
+              margin-top: 15px;
+            }
+
+            .add-exercise-section {
+              margin-top: 20px;
+              padding: 0 20px 200px;
+            }
+
+            .add-exercise-btn {
+              width: 100%;
+              background: rgba(255, 255, 255, 0.05);
+              border: 2px dashed rgba(255, 255, 255, 0.2);
+              color: white;
+              padding: 15px;
+              border-radius: 12px;
+              font-size: 16px;
+              font-weight: 600;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 8px;
+            }
+
+            .add-exercise-modal {
+              position: fixed;
+              top: 0;
+              left: 0;
+              right: 0;
+              bottom: 0;
+              background: rgba(0, 0, 0, 0.95);
+              z-index: 2000;
+              display: flex;
+              flex-direction: column;
+              padding: 20px;
+              justify-content: center;
+            }
+
+            .add-exercise-content {
+              background: rgba(255, 255, 255, 0.05);
+              border: 1px solid rgba(255, 255, 255, 0.1);
+              border-radius: 20px;
+              padding: 30px;
+              max-width: 400px;
+              margin: 0 auto;
+              width: 100%;
+            }
+
+            .add-exercise-title {
+              font-family: 'Bebas Neue', sans-serif;
+              font-size: 28px;
+              letter-spacing: 2px;
+              color: #ff6600;
+              margin-bottom: 20px;
+              text-align: center;
+            }
+
+            .exercise-input {
+              width: 100%;
+              background: rgba(0, 0, 0, 0.3);
+              border: 2px solid rgba(255, 255, 255, 0.2);
+              border-radius: 12px;
+              color: white;
+              padding: 15px;
+              font-size: 16px;
+              margin-bottom: 15px;
+            }
+
+            .exercise-input:focus {
+              outline: none;
+              border-color: #ff6600;
+            }
+
+            .modal-btn-group {
+              display: flex;
+              gap: 10px;
+            }
+
+            .modal-btn-primary {
+              flex: 1;
+              background: linear-gradient(135deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%);
+              border: none;
+              color: white;
+              padding: 15px;
+              border-radius: 12px;
+              font-size: 16px;
+              font-weight: 600;
+              cursor: pointer;
+            }
+
+            .modal-btn-primary:disabled {
+              opacity: 0.5;
+              cursor: not-allowed;
+            }
+
+            .modal-btn-secondary {
+              flex: 1;
+              background: rgba(255, 255, 255, 0.1);
+              border: 1px solid rgba(255, 255, 255, 0.2);
+              color: white;
+              padding: 15px;
+              border-radius: 12px;
+              font-size: 16px;
+              font-weight: 600;
+              cursor: pointer;
+            }
+
+            @media (min-width: 768px) {
+              .app {
+                max-width: 428px;
+                margin: 0 auto;
+                box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+              }
+            }
+          `}</style>
+
+          {page === 'history' ? (
+            <>
+              <div className="header">
+                <div className="header-content">
+                  <h1>IRON LOG</h1>
+                </div>
+              </div>
+
+              {/* Stopwatch */}
+              <div className="stopwatch-container">
+                <div className="stopwatch-time">{formatStopwatchTime(stopwatchTime)}</div>
+                <div className="stopwatch-controls">
+                  {!stopwatchRunning ? (
+                    <button className="stopwatch-btn play" onClick={startStopwatch}>
+                      ▶
+                    </button>
+                  ) : (
+                    <button className="stopwatch-btn pause" onClick={stopStopwatch}>
+                      ⏸
+                    </button>
+                  )}
+                  <button className="stopwatch-btn reset" onClick={resetStopwatch}>
+                    ↻
+                  </button>
+                </div>
+              </div>
+
+              <div className="start-workout-section">
+                <button className="start-btn" onClick={() => setShowGroupSelect(true)}>
+                  <Plus size={24} />
+                  Start Workout
+                </button>
+              </div>
+
+              <div className="history-section">
+                <div className="section-title">
+                  <TrendingUp size={24} />
+                  Recent Workouts
+                </div>
+
+                {workoutHistory.length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-state-icon">
+                      <Dumbbell size={64} opacity={0.3} />
+                    </div>
+                    <p>No workouts yet</p>
+                    <p style={{ fontSize: '14px', marginTop: '10px' }}>
+                      Tap "Start Workout" to begin
+                    </p>
+                  </div>
+                ) : (
+                  workoutHistory.map((workout, index) => (
+                    <div key={index} className="workout-card">
+                      <div className="workout-card-header">
+                        <div>
+                          <div className="workout-title">{workout.muscleGroup}</div>
+                          <div className="workout-date">
+                            <Calendar size={14} />
+                            {formatDate(workout.date)}
+                          </div>
+                        </div>
+                        <button 
+                          className={`delete-workout-btn ${deleteConfirmIndex === index ? 'confirm' : ''}`}
+                          onClick={() => handleDeleteClick(index)}
+                          onBlur={() => setDeleteConfirmIndex(null)}
+                        >
+                          <Trash2 size={14} />
+                          {deleteConfirmIndex === index ? 'Confirm?' : 'Delete'}
+                        </button>
+                      </div>
+
+                      <div className="workout-stats">
+                        <div className="stat">
+                          <div className="stat-label">Exercises</div>
+                          <div className="stat-value">{workout.exercises.length}</div>
+                        </div>
+                        <div className="stat">
+                          <div className="stat-label">Total Sets</div>
+                          <div className="stat-value">
+                            {workout.exercises.reduce((sum, ex) => sum + ex.sets.length, 0)}
+                          </div>
+                        </div>
+                        <div className="stat">
+                          <div className="stat-label">Volume</div>
+                          <div className="stat-value">{getTotalVolume(workout).toLocaleString()}</div>
+                        </div>
+                      </div>
+
+                      <div className="exercise-summary">
+                        {workout.exercises.map(ex => ex.name).join(' • ')}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {showGroupSelect && (
+                <div className="muscle-group-modal">
+                  <div className="modal-header">
+                    <h2>Select Muscle Group</h2>
+                  </div>
+                  
+                  {/* Stopwatch */}
+                  <div className="stopwatch-container">
+                    <div className="stopwatch-time">{formatStopwatchTime(stopwatchTime)}</div>
+                    <div className="stopwatch-controls">
+                      {!stopwatchRunning ? (
+                        <button className="stopwatch-btn play" onClick={startStopwatch}>
+                          ▶
+                        </button>
+                      ) : (
+                        <button className="stopwatch-btn pause" onClick={stopStopwatch}>
+                          ⏸
+                        </button>
+                      )}
+                      <button className="stopwatch-btn reset" onClick={resetStopwatch}>
+                        ↻
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="muscle-groups">
+                    {Object.keys(MUSCLE_GROUPS).map(group => (
+                      <button
+                        key={group}
+                        className="muscle-group-btn"
+                        onClick={() => startWorkout(group)}
+                      >
+                        {group}
+                        <ChevronDown size={20} />
+                      </button>
+                    ))}
+                  </div>
+                  <button className="close-modal-btn" onClick={() => setShowGroupSelect(false)}>
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="workout-page">
+              <div className="workout-header">
+                <button className="back-btn" onClick={() => {
+                  setPage('history');
+                  setCurrentWorkout(null);
+                  setExercises([]);
+                }}>
+                  <ChevronLeft size={24} />
+                </button>
+                <h2>{currentWorkout?.muscleGroup}</h2>
+                <button className="plate-calc-btn" onClick={() => setShowPlateCalculator(true)}>
+                  Plates
+                </button>
+              </div>
+
+              {/* Stopwatch */}
+              <div className="stopwatch-container">
+                <div className="stopwatch-time">{formatStopwatchTime(stopwatchTime)}</div>
+                <div className="stopwatch-controls">
+                  {!stopwatchRunning ? (
+                    <button className="stopwatch-btn play" onClick={startStopwatch}>
+                      ▶
+                    </button>
+                  ) : (
+                    <button className="stopwatch-btn pause" onClick={stopStopwatch}>
+                      ⏸
+                    </button>
+                  )}
+                  <button className="stopwatch-btn reset" onClick={resetStopwatch}>
+                    ↻
+                  </button>
+                </div>
+              </div>
+
+              <div className="exercises-list">
+                {exercises.map((exercise, exIndex) => (
+                  <div key={exIndex} className={`exercise-card ${exercise.completed ? 'completed' : ''}`}>
+                    <div className="exercise-header">
+                      <div className="exercise-name">{exercise.name}</div>
+                      <div className="exercise-actions">
+                        <button 
+                          className="exercise-plate-btn" 
+                          onClick={() => setActiveExerciseCalc(exIndex)}
+                        >
+                          Plates
+                        </button>
+                        <div
+                          className={`complete-checkbox ${exercise.completed ? 'checked' : ''}`}
+                          onClick={() => toggleExerciseComplete(exIndex)}
+                        >
+                          {exercise.completed && <Check size={18} />}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="sets-list">
+                      {exercise.sets.map((set, setIndex) => (
+                        <div key={setIndex} className="set-row">
+                          <div className="set-number">{setIndex + 1}</div>
+                          <div className="set-input-group">
+                            <div className="set-input-label">Weight (lbs)</div>
+                            <input
+                              type="number"
+                              className="set-input"
+                              value={set.weight || ''}
+                              onChange={(e) => updateSet(exIndex, setIndex, 'weight', e.target.value)}
+                              placeholder="0"
+                            />
+                          </div>
+                          <div className="set-input-group">
+                            <div className="set-input-label">Reps</div>
+                            <input
+                              type="number"
+                              className="set-input"
+                              value={set.reps || ''}
+                              onChange={(e) => updateSet(exIndex, setIndex, 'reps', e.target.value)}
+                              placeholder="0"
+                            />
+                          </div>
+                          {exercise.sets.length > 1 && (
+                            <button
+                              className="remove-set-btn"
+                              onClick={() => removeSet(exIndex, setIndex)}
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <button className="add-set-btn" onClick={() => addSet(exIndex)}>
+                      <Plus size={16} />
+                      Add Set
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="add-exercise-section">
+                <button className="add-exercise-btn" onClick={() => setShowAddExercise(true)}>
+                  <Plus size={20} />
+                  Add Custom Exercise
+                </button>
+              </div>
+
+              <button className="finish-workout-btn" onClick={finishWorkout}>
+                <Check size={24} />
+                Finish Workout
+              </button>
+
+              {activeExerciseCalc !== null && (
+                <div className="calculator-modal" onClick={() => {
+                  setActiveExerciseCalc(null);
+                  setExercisePlates45('');
+                }}>
+                  <div className="calculator-content" onClick={(e) => e.stopPropagation()}>
+                    <div className="calculator-title">{exercises[activeExerciseCalc]?.name}</div>
+                    
+                    <div>
+                      <div className="result-label" style={{ marginBottom: '10px' }}>45lb Plates per side → Add set</div>
+                      <input
+                        type="number"
+                        className="calculator-input"
+                        value={exercisePlates45}
+                        onChange={(e) => setExercisePlates45(e.target.value)}
+                        placeholder="# of 45lb plates per side"
+                      />
+                      {exercisePlates45 && (
+                        <div className="calculator-result">
+                          <div className="result-label">Total weight</div>
+                          <div className="result-value">{calculateWeightFrom45s(parseFloat(exercisePlates45))} lbs</div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="modal-btn-group" style={{ marginTop: '20px' }}>
+                      <button 
+                        className="modal-btn-primary" 
+                        onClick={() => applyPlatesWeightToExercise(activeExerciseCalc)}
+                        disabled={!exercisePlates45}
+                      >
+                        Add Set with Weight
+                      </button>
+                      <button 
+                        className="modal-btn-secondary" 
+                        onClick={() => {
+                          setActiveExerciseCalc(null);
+                          setExercisePlates45('');
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {showPlateCalculator && (
+                <div className="calculator-modal" onClick={() => {
+                  setShowPlateCalculator(false);
+                  setPlateWeight('');
+                  setNumPlates45('');
+                }}>
+                  <div className="calculator-content" onClick={(e) => e.stopPropagation()}>
+                    <div className="calculator-title">Plate Calculator</div>
+                    
+                    <div style={{ marginBottom: '30px' }}>
+                      <div className="result-label" style={{ marginBottom: '10px' }}>Weight → Plates per side</div>
+                      <input
+                        type="number"
+                        className="calculator-input"
+                        value={plateWeight}
+                        onChange={(e) => setPlateWeight(e.target.value)}
+                        placeholder="Enter total weight (lbs)"
+                      />
+                      {plateWeight && (
+                        <div className="calculator-result">
+                          <div className="result-label">Plates per side</div>
+                          <div className="result-value">{calculatePlates(parseFloat(plateWeight))}</div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="result-label" style={{ marginBottom: '10px' }}>45lb Plates → Total weight</div>
+                      <input
+                        type="number"
+                        className="calculator-input"
+                        value={numPlates45}
+                        onChange={(e) => setNumPlates45(e.target.value)}
+                        placeholder="# of 45lb plates per side"
+                      />
+                      {numPlates45 && (
+                        <div className="calculator-result">
+                          <div className="result-label">Total weight</div>
+                          <div className="result-value">{calculateWeightFrom45s(parseFloat(numPlates45))} lbs</div>
+                        </div>
+                      )}
+                    </div>
+
+                    <button className="modal-btn" onClick={() => {
+                      setShowPlateCalculator(false);
+                      setPlateWeight('');
+                      setNumPlates45('');
+                    }}>
+                      Close
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {showAddExercise && (
+                <div className="add-exercise-modal" onClick={() => setShowAddExercise(false)}>
+                  <div className="add-exercise-content" onClick={(e) => e.stopPropagation()}>
+                    <div className="add-exercise-title">Add Custom Exercise</div>
+                    
+                    <input
+                      type="text"
+                      className="exercise-input"
+                      value={newExerciseName}
+                      onChange={(e) => setNewExerciseName(e.target.value)}
+                      placeholder="Exercise name"
+                      onKeyPress={(e) => e.key === 'Enter' && addCustomExercise()}
+                    />
+
+                    <div className="modal-btn-group">
+                      <button className="modal-btn-primary" onClick={addCustomExercise}>
+                        Add Exercise
+                      </button>
+                      <button className="modal-btn-secondary" onClick={() => {
+                        setShowAddExercise(false);
+                        setNewExerciseName('');
+                      }}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.render(<WorkoutTracker />, document.getElementById('root'));
+  </script>
+</body>
+</html>
