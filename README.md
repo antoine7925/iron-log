@@ -1,2 +1,2 @@
 # iron-log
-workout weight tracker
+simple workout weight tracker
