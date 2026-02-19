@@ -6,6 +6,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Iron Log">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Iron Log - Workout Tracker</title>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -116,6 +119,7 @@
       const [stopwatchTime, setStopwatchTime] = useState(0);
       const [stopwatchRunning, setStopwatchRunning] = useState(false);
       const [viewingWorkout, setViewingWorkout] = useState(null);
+      const [expandedGroups, setExpandedGroups] = useState({});
 
       // Stopwatch effect
       useEffect(() => {
@@ -132,11 +136,12 @@
         const hours = Math.floor(time / 3600);
         const minutes = Math.floor((time % 3600) / 60);
         const seconds = Math.floor(time % 60);
+        const centiseconds = Math.floor((time % 1) * 10);
         
         if (hours > 0) {
-          return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+          return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${centiseconds}`;
         }
-        return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        return `${minutes}:${seconds.toString().padStart(2, '0')}.${centiseconds}`;
       };
 
       const startStopwatch = () => setStopwatchRunning(true);
@@ -403,6 +408,24 @@
         };
       };
 
+      const groupWorkoutsByMuscle = () => {
+        const grouped = {};
+        workoutHistory.forEach(workout => {
+          if (!grouped[workout.muscleGroup]) {
+            grouped[workout.muscleGroup] = [];
+          }
+          grouped[workout.muscleGroup].push(workout);
+        });
+        return grouped;
+      };
+
+      const toggleGroup = (muscleGroup) => {
+        setExpandedGroups(prev => ({
+          ...prev,
+          [muscleGroup]: !prev[muscleGroup]
+        }));
+      };
+
       return (
         <div className="app">
           <style>{`
@@ -430,7 +453,7 @@
 
             .header {
               background: linear-gradient(135deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%);
-              padding: 42px 20px 21px;
+              padding: 36px 20px 18px;
               box-shadow: 0 10px 40px rgba(255, 69, 0, 0.5);
               position: relative;
               overflow: hidden;
@@ -480,7 +503,7 @@
               font-size: 36px;
               font-weight: bold;
               color: white;
-              min-width: 140px;
+              min-width: 160px;
               text-align: left;
               letter-spacing: 2px;
             }
@@ -569,7 +592,7 @@
             }
 
             .modal-header {
-              padding: 42px 20px 20px;
+              padding: 36px 20px 17px;
               background: linear-gradient(135deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%);
             }
 
@@ -765,7 +788,7 @@
 
             .workout-header {
               background: linear-gradient(135deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%);
-              padding: 42px 20px 20px;
+              padding: 36px 20px 17px;
               display: flex;
               align-items: center;
               gap: 15px;
@@ -1244,6 +1267,136 @@
               padding-bottom: 80px;
             }
 
+            .muscle-group-stack {
+              position: relative;
+              margin-bottom: 20px;
+              cursor: pointer;
+            }
+
+            .muscle-group-header {
+              background: rgba(255, 255, 255, 0.05);
+              border: 1px solid rgba(255, 255, 255, 0.1);
+              border-radius: 16px;
+              padding: 20px;
+              position: relative;
+              transition: all 0.3s ease;
+            }
+
+            .muscle-group-header:active {
+              background: rgba(255, 255, 255, 0.08);
+              transform: scale(0.98);
+            }
+
+            .muscle-group-header.has-stack::before {
+              content: '';
+              position: absolute;
+              top: -4px;
+              left: 8px;
+              right: 8px;
+              height: 100%;
+              background: rgba(255, 255, 255, 0.03);
+              border: 1px solid rgba(255, 255, 255, 0.08);
+              border-radius: 16px;
+              z-index: -1;
+            }
+
+            .muscle-group-header.has-stack::after {
+              content: '';
+              position: absolute;
+              top: -8px;
+              left: 16px;
+              right: 16px;
+              height: 100%;
+              background: rgba(255, 255, 255, 0.02);
+              border: 1px solid rgba(255, 255, 255, 0.05);
+              border-radius: 16px;
+              z-index: -2;
+            }
+
+            .muscle-group-title-row {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 8px;
+            }
+
+            .muscle-group-name {
+              font-size: 20px;
+              font-weight: 700;
+              color: #ff6600;
+              display: flex;
+              align-items: center;
+              gap: 10px;
+            }
+
+            .workout-count-badge {
+              background: rgba(255, 102, 0, 0.2);
+              border: 1px solid rgba(255, 102, 0, 0.4);
+              color: #ff6600;
+              font-size: 12px;
+              font-weight: 600;
+              padding: 4px 10px;
+              border-radius: 12px;
+            }
+
+            .expand-icon {
+              transition: transform 0.3s ease;
+            }
+
+            .expand-icon.expanded {
+              transform: rotate(180deg);
+            }
+
+            .group-summary {
+              font-size: 13px;
+              opacity: 0.7;
+              margin-top: 8px;
+            }
+
+            .expanded-workouts {
+              margin-top: 15px;
+              padding-top: 15px;
+              border-top: 1px solid rgba(255, 255, 255, 0.1);
+              animation: slideDown 0.3s ease;
+            }
+
+            @keyframes slideDown {
+              from {
+                opacity: 0;
+                max-height: 0;
+              }
+              to {
+                opacity: 1;
+                max-height: 2000px;
+              }
+            }
+
+            .individual-workout {
+              background: rgba(0, 0, 0, 0.2);
+              border: 1px solid rgba(255, 255, 255, 0.05);
+              border-radius: 12px;
+              padding: 15px;
+              margin-bottom: 10px;
+              cursor: pointer;
+              transition: all 0.3s ease;
+            }
+
+            .individual-workout:active {
+              background: rgba(0, 0, 0, 0.3);
+              transform: scale(0.98);
+            }
+
+            .individual-workout:last-child {
+              margin-bottom: 0;
+            }
+
+            .workout-mini-header {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              margin-bottom: 10px;
+            }
+
             .progress-indicator {
               display: inline-flex;
               align-items: center;
@@ -1427,61 +1580,161 @@
                     </p>
                   </div>
                 ) : (
-                  workoutHistory.map((workout, index) => (
-                    <div key={index} className="workout-card" onClick={(e) => {
-                      if (!e.target.closest('.workout-card-actions')) {
-                        viewWorkout(workout);
-                      }
-                    }}>
-                      <div className="workout-card-header">
-                        <div>
-                          <div className="workout-title">{workout.muscleGroup}</div>
-                          <div className="workout-date">
-                            <Calendar size={14} />
-                            {formatDate(workout.date)}
+                  (() => {
+                    const groupedWorkouts = groupWorkoutsByMuscle();
+                    return Object.keys(groupedWorkouts).map((muscleGroup) => {
+                      const workouts = groupedWorkouts[muscleGroup];
+                      const isExpanded = expandedGroups[muscleGroup];
+                      const latestWorkout = workouts[0];
+                      const totalVolume = workouts.reduce((sum, w) => sum + getTotalVolume(w), 0);
+                      
+                      return (
+                        <div key={muscleGroup} className="muscle-group-stack">
+                          <div 
+                            className={`muscle-group-header ${workouts.length > 1 ? 'has-stack' : ''}`}
+                            onClick={() => workouts.length > 1 ? toggleGroup(muscleGroup) : viewWorkout(latestWorkout)}
+                          >
+                            <div className="muscle-group-title-row">
+                              <div className="muscle-group-name">
+                                {muscleGroup}
+                                {workouts.length > 1 && (
+                                  <span className="workout-count-badge">
+                                    {workouts.length} workouts
+                                  </span>
+                                )}
+                              </div>
+                              {workouts.length > 1 ? (
+                                <div className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>
+                                  <ChevronDown size={20} />
+                                </div>
+                              ) : (
+                                <button 
+                                  className="view-workout-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    viewWorkout(latestWorkout);
+                                  }}
+                                >
+                                  <Eye size={14} />
+                                  View
+                                </button>
+                              )}
+                            </div>
+                            
+                            {!isExpanded && (
+                              <>
+                                <div className="workout-date" style={{ marginTop: '8px' }}>
+                                  <Calendar size={14} />
+                                  Latest: {formatDate(latestWorkout.date)}
+                                </div>
+                                
+                                <div className="workout-stats" style={{ marginTop: '12px', paddingTop: '12px' }}>
+                                  <div className="stat">
+                                    <div className="stat-label">Total Volume</div>
+                                    <div className="stat-value" style={{ fontSize: '18px' }}>
+                                      {totalVolume.toLocaleString()}
+                                    </div>
+                                  </div>
+                                  <div className="stat">
+                                    <div className="stat-label">Avg per Workout</div>
+                                    <div className="stat-value" style={{ fontSize: '18px' }}>
+                                      {Math.round(totalVolume / workouts.length).toLocaleString()}
+                                    </div>
+                                  </div>
+                                  <div className="stat">
+                                    <div className="stat-label">Best Volume</div>
+                                    <div className="stat-value" style={{ fontSize: '18px' }}>
+                                      {Math.max(...workouts.map(w => getTotalVolume(w))).toLocaleString()}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="group-summary">
+                                  Last exercise: {latestWorkout.exercises.map(ex => ex.name).slice(0, 3).join(' • ')}
+                                  {latestWorkout.exercises.length > 3 && ` + ${latestWorkout.exercises.length - 3} more`}
+                                </div>
+                              </>
+                            )}
+
+                            {isExpanded && (
+                              <div className="expanded-workouts" onClick={(e) => e.stopPropagation()}>
+                                {workouts.map((workout, index) => {
+                                  const workoutGlobalIndex = workoutHistory.findIndex(w => w === workout);
+                                  return (
+                                    <div 
+                                      key={index} 
+                                      className="individual-workout"
+                                      onClick={() => viewWorkout(workout)}
+                                    >
+                                      <div className="workout-mini-header">
+                                        <div>
+                                          <div className="workout-date">
+                                            <Calendar size={14} />
+                                            {formatDate(workout.date)}
+                                          </div>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px' }}>
+                                          <button 
+                                            className="view-workout-btn"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              viewWorkout(workout);
+                                            }}
+                                          >
+                                            <Eye size={14} />
+                                            View
+                                          </button>
+                                          <button 
+                                            className={`delete-workout-btn ${deleteConfirmIndex === workoutGlobalIndex ? 'confirm' : ''}`}
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleDeleteClick(workoutGlobalIndex);
+                                            }}
+                                            onBlur={() => setDeleteConfirmIndex(null)}
+                                          >
+                                            <Trash2 size={14} />
+                                            {deleteConfirmIndex === workoutGlobalIndex ? 'Confirm?' : 'Delete'}
+                                          </button>
+                                        </div>
+                                      </div>
+
+                                      <div className="workout-stats">
+                                        <div className="stat">
+                                          <div className="stat-label">Exercises</div>
+                                          <div className="stat-value" style={{ fontSize: '16px' }}>
+                                            {getFilledExercisesCount(workout)}
+                                          </div>
+                                        </div>
+                                        <div className="stat">
+                                          <div className="stat-label">Sets</div>
+                                          <div className="stat-value" style={{ fontSize: '16px' }}>
+                                            {getFilledSetsCount(workout)}
+                                          </div>
+                                        </div>
+                                        <div className="stat">
+                                          <div className="stat-label">Volume</div>
+                                          <div className="stat-value" style={{ fontSize: '16px' }}>
+                                            {getTotalVolume(workout).toLocaleString()}
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      <div className="exercise-summary" style={{ marginTop: '10px' }}>
+                                        {workout.exercises.filter(ex => ex.sets.some(s => s.weight > 0 || s.reps > 0))
+                                          .map(ex => ex.name).slice(0, 3).join(' • ')}
+                                        {workout.exercises.filter(ex => ex.sets.some(s => s.weight > 0 || s.reps > 0)).length > 3 && 
+                                          ` + ${workout.exercises.filter(ex => ex.sets.some(s => s.weight > 0 || s.reps > 0)).length - 3} more`}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         </div>
-                        <div className="workout-card-actions" onClick={(e) => e.stopPropagation()}>
-                          <button 
-                            className="view-workout-btn"
-                            onClick={() => viewWorkout(workout)}
-                          >
-                            <Eye size={14} />
-                            View
-                          </button>
-                          <button 
-                            className={`delete-workout-btn ${deleteConfirmIndex === index ? 'confirm' : ''}`}
-                            onClick={() => handleDeleteClick(index)}
-                            onBlur={() => setDeleteConfirmIndex(null)}
-                          >
-                            <Trash2 size={14} />
-                            {deleteConfirmIndex === index ? 'Confirm?' : 'Delete'}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="workout-stats">
-                        <div className="stat">
-                          <div className="stat-label">Exercises</div>
-                          <div className="stat-value">{getFilledExercisesCount(workout)}</div>
-                        </div>
-                        <div className="stat">
-                          <div className="stat-label">Total Sets</div>
-                          <div className="stat-value">
-                            {getFilledSetsCount(workout)}
-                          </div>
-                        </div>
-                        <div className="stat">
-                          <div className="stat-label">Volume</div>
-                          <div className="stat-value">{getTotalVolume(workout).toLocaleString()}</div>
-                        </div>
-                      </div>
-
-                      <div className="exercise-summary">
-                        {workout.exercises.map(ex => ex.name).join(' • ')}
-                      </div>
-                    </div>
-                  ))
+                      );
+                    });
+                  })()
                 )}
               </div>
 
@@ -1538,6 +1791,24 @@
                   <ChevronLeft size={24} />
                 </button>
                 <h2>{viewingWorkout?.muscleGroup}</h2>
+                <button 
+                  className="delete-workout-btn"
+                  style={{ marginLeft: 'auto' }}
+                  onClick={() => {
+                    const index = workoutHistory.findIndex(w => w === viewingWorkout);
+                    if (deleteConfirmIndex === index) {
+                      deleteWorkout(index);
+                      setPage('history');
+                      setViewingWorkout(null);
+                    } else {
+                      setDeleteConfirmIndex(index);
+                    }
+                  }}
+                  onBlur={() => setDeleteConfirmIndex(null)}
+                >
+                  <Trash2 size={14} />
+                  {deleteConfirmIndex === workoutHistory.findIndex(w => w === viewingWorkout) ? 'Confirm?' : 'Delete'}
+                </button>
               </div>
 
               <div className="exercises-list">
