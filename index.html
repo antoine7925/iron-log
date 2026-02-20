@@ -120,6 +120,7 @@
       const [stopwatchRunning, setStopwatchRunning] = useState(false);
       const [viewingWorkout, setViewingWorkout] = useState(null);
       const [expandedGroups, setExpandedGroups] = useState({});
+      const [backgroundTime, setBackgroundTime] = useState(null);
 
       // Stopwatch effect
       useEffect(() => {
@@ -131,6 +132,24 @@
         }
         return () => clearInterval(interval);
       }, [stopwatchRunning]);
+
+      // Handle background/foreground to keep stopwatch running
+      useEffect(() => {
+        const handleVisibilityChange = () => {
+          if (document.hidden && stopwatchRunning) {
+            // App going to background - store current time
+            setBackgroundTime(Date.now());
+          } else if (!document.hidden && backgroundTime && stopwatchRunning) {
+            // App coming back to foreground - add elapsed time
+            const elapsedSeconds = (Date.now() - backgroundTime) / 1000;
+            setStopwatchTime(prev => prev + elapsedSeconds);
+            setBackgroundTime(null);
+          }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }, [stopwatchRunning, backgroundTime]);
 
       const formatStopwatchTime = (time) => {
         const hours = Math.floor(time / 3600);
@@ -149,6 +168,7 @@
       const resetStopwatch = () => {
         setStopwatchRunning(false);
         setStopwatchTime(0);
+        localStorage.removeItem('stopwatchState');
       };
 
       useEffect(() => {
@@ -159,6 +179,20 @@
         const savedCustom = localStorage.getItem('customExercises');
         if (savedCustom) {
           setCustomExercises(JSON.parse(savedCustom));
+        }
+        // Load stopwatch state
+        const savedStopwatch = localStorage.getItem('stopwatchState');
+        if (savedStopwatch) {
+          const { time, running, backgroundTime: savedBgTime } = JSON.parse(savedStopwatch);
+          if (running && savedBgTime) {
+            // Calculate elapsed time since app was closed
+            const elapsedSeconds = (Date.now() - savedBgTime) / 1000;
+            setStopwatchTime(time + elapsedSeconds);
+            setStopwatchRunning(true);
+          } else {
+            setStopwatchTime(time);
+            setStopwatchRunning(running);
+          }
         }
       }, []);
 
@@ -173,6 +207,16 @@
           localStorage.setItem('customExercises', JSON.stringify(customExercises));
         }
       }, [customExercises]);
+
+      // Save stopwatch state
+      useEffect(() => {
+        const state = {
+          time: stopwatchTime,
+          running: stopwatchRunning,
+          backgroundTime: stopwatchRunning ? Date.now() : null
+        };
+        localStorage.setItem('stopwatchState', JSON.stringify(state));
+      }, [stopwatchTime, stopwatchRunning]);
 
       const startWorkout = (muscleGroup) => {
         const defaultExercises = MUSCLE_GROUPS[muscleGroup] || [];
@@ -348,7 +392,12 @@
         if (date.toDateString() === today.toDateString()) return 'Today';
         if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
         
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        // Format as "Monday, Jan 15"
+        const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' });
+        const month = date.toLocaleDateString('en-US', { month: 'short' });
+        const day = date.getDate();
+        
+        return `${dayOfWeek}, ${month} ${day}`;
       };
 
       const getTotalVolume = (workout) => {
@@ -426,6 +475,42 @@
         }));
       };
 
+      const getExerciseProgressData = () => {
+        const exerciseData = {};
+        
+        // Collect data for all exercises across all workouts
+        workoutHistory.forEach(workout => {
+          workout.exercises.forEach(exercise => {
+            const totalWeight = exercise.sets.reduce((sum, set) => 
+              sum + (set.weight * set.reps), 0
+            );
+            
+            if (totalWeight > 0) {
+              if (!exerciseData[exercise.name]) {
+                exerciseData[exercise.name] = {
+                  name: exercise.name,
+                  totalWeight: 0,
+                  workoutCount: 0,
+                  lastWorkout: null
+                };
+              }
+              
+              exerciseData[exercise.name].totalWeight += totalWeight;
+              exerciseData[exercise.name].workoutCount += 1;
+              
+              const workoutDate = new Date(workout.date);
+              if (!exerciseData[exercise.name].lastWorkout || 
+                  workoutDate > new Date(exerciseData[exercise.name].lastWorkout)) {
+                exerciseData[exercise.name].lastWorkout = workout.date;
+              }
+            }
+          });
+        });
+        
+        // Convert to array and sort by total weight
+        return Object.values(exerciseData).sort((a, b) => b.totalWeight - a.totalWeight);
+      };
+
       return (
         <div className="app">
           <style>{`
@@ -453,10 +538,11 @@
 
             .header {
               background: linear-gradient(135deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%);
-              padding: 36px 20px 18px;
+              padding: 31px 20px 15px;
               box-shadow: 0 10px 40px rgba(255, 69, 0, 0.5);
               position: relative;
               overflow: hidden;
+              border-radius: 0 0 24px 24px;
             }
 
             .header::before {
@@ -514,8 +600,8 @@
             }
 
             .stopwatch-btn {
-              width: 36px;
-              height: 36px;
+              width: 45px;
+              height: 45px;
               border: none;
               border-radius: 50%;
               color: white;
@@ -523,7 +609,7 @@
               display: flex;
               align-items: center;
               justify-content: center;
-              font-size: 14px;
+              font-size: 16px;
               transition: all 0.3s ease;
             }
 
@@ -592,8 +678,9 @@
             }
 
             .modal-header {
-              padding: 36px 20px 17px;
+              padding: 31px 20px 14px;
               background: linear-gradient(135deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%);
+              border-radius: 0 0 24px 24px;
             }
 
             .modal-header h2 {
@@ -788,11 +875,12 @@
 
             .workout-header {
               background: linear-gradient(135deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%);
-              padding: 36px 20px 17px;
+              padding: 31px 20px 14px;
               display: flex;
               align-items: center;
               gap: 15px;
               box-shadow: 0 4px 24px rgba(255, 69, 0, 0.4);
+              border-radius: 0 0 24px 24px;
             }
 
             .workout-header h2 {
@@ -1472,6 +1560,79 @@
               color: #4ade80;
             }
 
+            .exercise-progress-section {
+              background: linear-gradient(135deg, rgba(255, 102, 0, 0.1) 0%, rgba(255, 140, 0, 0.05) 100%);
+              border: 1px solid rgba(255, 102, 0, 0.3);
+              border-radius: 16px;
+              padding: 20px;
+              margin-bottom: 20px;
+            }
+
+            .exercise-progress-title {
+              font-size: 14px;
+              font-weight: 600;
+              color: #ff6600;
+              margin-bottom: 20px;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+
+            .exercise-chart {
+              display: flex;
+              flex-direction: column;
+              gap: 12px;
+            }
+
+            .exercise-bar-item {
+              display: flex;
+              align-items: center;
+              gap: 10px;
+            }
+
+            .exercise-bar-label {
+              font-size: 12px;
+              font-weight: 600;
+              min-width: 100px;
+              max-width: 100px;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+            }
+
+            .exercise-bar-container {
+              flex: 1;
+              height: 24px;
+              background: rgba(0, 0, 0, 0.3);
+              border-radius: 12px;
+              overflow: hidden;
+              position: relative;
+            }
+
+            .exercise-bar-fill {
+              height: 100%;
+              background: linear-gradient(90deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%);
+              border-radius: 12px;
+              transition: width 0.5s ease;
+              display: flex;
+              align-items: center;
+              justify-content: flex-end;
+              padding-right: 8px;
+            }
+
+            .exercise-bar-value {
+              font-size: 10px;
+              font-weight: 700;
+              color: white;
+              text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+              white-space: nowrap;
+            }
+
+            .exercise-bar-count {
+              font-size: 10px;
+              opacity: 0.6;
+              margin-left: 8px;
+            }
+
             @media (min-width: 768px) {
               .app {
                 max-width: 428px;
@@ -1522,51 +1683,101 @@
                 </div>
 
                 {workoutHistory.length > 0 && (
-                  <div style={{
-                    background: 'linear-gradient(135deg, rgba(255, 102, 0, 0.1) 0%, rgba(255, 140, 0, 0.05) 100%)',
-                    border: '1px solid rgba(255, 102, 0, 0.3)',
-                    borderRadius: '16px',
-                    padding: '20px',
-                    marginBottom: '20px'
-                  }}>
-                    <div style={{ 
-                      fontSize: '14px', 
-                      fontWeight: '600', 
-                      color: '#ff6600', 
-                      marginBottom: '15px',
-                      textTransform: 'uppercase',
-                      letterSpacing: '1px'
+                  <>
+                    <div style={{
+                      background: 'linear-gradient(135deg, rgba(255, 102, 0, 0.1) 0%, rgba(255, 140, 0, 0.05) 100%)',
+                      border: '1px solid rgba(255, 102, 0, 0.3)',
+                      borderRadius: '16px',
+                      padding: '20px',
+                      marginBottom: '20px'
                     }}>
-                      Overall Progress
+                      <div style={{ 
+                        fontSize: '14px', 
+                        fontWeight: '600', 
+                        color: '#ff6600', 
+                        marginBottom: '15px',
+                        textTransform: 'uppercase',
+                        letterSpacing: '1px'
+                      }}>
+                        Overall Stats
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px' }}>
+                        <div>
+                          <div className="stat-label">Total Workouts</div>
+                          <div className="stat-value" style={{ fontSize: '24px' }}>
+                            {workoutHistory.length}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="stat-label">This Week</div>
+                          <div className="stat-value" style={{ fontSize: '24px' }}>
+                            {(() => {
+                              const oneWeekAgo = new Date();
+                              oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+                              return workoutHistory.filter(w => new Date(w.date) >= oneWeekAgo).length;
+                            })()}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="stat-label">Total Volume</div>
+                          <div className="stat-value" style={{ fontSize: '24px' }}>
+                            {(() => {
+                              const total = workoutHistory.reduce((sum, w) => sum + getTotalVolume(w), 0);
+                              return total >= 1000 ? `${(total / 1000).toFixed(0)}k` : total;
+                            })()}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px' }}>
-                      <div>
-                        <div className="stat-label">Total Workouts</div>
-                        <div className="stat-value" style={{ fontSize: '24px' }}>
-                          {workoutHistory.length}
-                        </div>
+
+                    <div className="exercise-progress-section">
+                      <div className="exercise-progress-title">
+                        Progress by Exercise
                       </div>
-                      <div>
-                        <div className="stat-label">This Week</div>
-                        <div className="stat-value" style={{ fontSize: '24px' }}>
-                          {(() => {
-                            const oneWeekAgo = new Date();
-                            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-                            return workoutHistory.filter(w => new Date(w.date) >= oneWeekAgo).length;
-                          })()}
-                        </div>
+                      <div className="exercise-chart">
+                        {(() => {
+                          const exerciseData = getExerciseProgressData();
+                          const maxWeight = Math.max(...exerciseData.map(e => e.totalWeight), 1);
+                          
+                          return exerciseData.slice(0, 8).map((exercise, index) => {
+                            const percentage = (exercise.totalWeight / maxWeight) * 100;
+                            const displayValue = exercise.totalWeight >= 1000 
+                              ? `${(exercise.totalWeight / 1000).toFixed(1)}k` 
+                              : exercise.totalWeight.toLocaleString();
+                            
+                            return (
+                              <div key={index} className="exercise-bar-item">
+                                <div className="exercise-bar-label" title={exercise.name}>
+                                  {exercise.name}
+                                </div>
+                                <div className="exercise-bar-container">
+                                  <div 
+                                    className="exercise-bar-fill" 
+                                    style={{ width: `${Math.max(percentage, 15)}%` }}
+                                  >
+                                    <span className="exercise-bar-value">{displayValue}</span>
+                                  </div>
+                                </div>
+                                <div className="exercise-bar-count">
+                                  {exercise.workoutCount}x
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
-                      <div>
-                        <div className="stat-label">Total Volume</div>
-                        <div className="stat-value" style={{ fontSize: '24px' }}>
-                          {(() => {
-                            const total = workoutHistory.reduce((sum, w) => sum + getTotalVolume(w), 0);
-                            return total >= 1000 ? `${(total / 1000).toFixed(0)}k` : total;
-                          })()}
+                      {getExerciseProgressData().length > 8 && (
+                        <div style={{ 
+                          fontSize: '11px', 
+                          opacity: '0.6', 
+                          marginTop: '10px',
+                          textAlign: 'center'
+                        }}>
+                          Showing top 8 exercises
                         </div>
-                      </div>
+                      )}
                     </div>
-                  </div>
+                  </>
                 )}
 
                 {workoutHistory.length === 0 ? (
@@ -1866,7 +2077,9 @@
                   return null;
                 })()}
 
-                {viewingWorkout?.exercises.map((exercise, exIndex) => {
+                {viewingWorkout?.exercises
+                  .filter(exercise => exercise.sets.some(set => set.weight > 0 || set.reps > 0))
+                  .map((exercise, exIndex) => {
                   const pr = getExercisePR(exercise.name, viewingWorkout.muscleGroup);
                   const maxSetWeight = Math.max(...exercise.sets.map(s => s.weight));
                   const isPR = maxSetWeight > 0 && maxSetWeight >= pr.maxWeight && pr.maxWeight > 0;
