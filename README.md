@@ -1,4 +1,4 @@
-# iron-log
+# Iron Log
 simple workout weight tracker
 
 
