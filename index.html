@@ -20,7 +20,6 @@
   <script type="text/babel">
     const { useState, useEffect } = React;
 
-    // Lucide Icons (simplified inline)
     const Plus = ({ size = 24 }) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <line x1="12" y1="5" x2="12" y2="19"></line>
@@ -37,6 +36,12 @@
     const ChevronLeft = ({ size = 24 }) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="15 18 9 12 15 6"></polyline>
+      </svg>
+    );
+
+    const ChevronUp = ({ size = 24 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="18 15 12 9 6 15"></polyline>
       </svg>
     );
 
@@ -86,7 +91,6 @@
       </svg>
     );
 
-    // Muscle groups with associated exercises
     const MUSCLE_GROUPS = {
       'Chest': ['Bench Press', 'Incline Dumbbell Press', 'Cable Flyes', 'Push-ups', 'Chest Dips'],
       'Back': ['Deadlift', 'Pull-ups', 'Barbell Rows', 'Lat Pulldown', 'Cable Rows'],
@@ -99,6 +103,111 @@
       'Hamstrings': ['Romanian Deadlift', 'Leg Curls', 'Good Mornings', 'Nordic Curls', 'Glute Ham Raise'],
       'Glutes': ['Hip Thrusts', 'Bulgarian Split Squats', 'Glute Kickbacks', 'Cable Pull-throughs', 'Sumo Deadlift']
     };
+
+    // ── Self-contained stopwatch – ticks only re-render this component ──
+    const Stopwatch = React.memo(function Stopwatch() {
+      const { useRef, useState, useEffect } = React;
+
+      const baseRef   = useRef(0);   // accumulated ms before current run
+      const startRef  = useRef(null); // Date.now() when last started
+      const runningRef = useRef(false);
+      const rafRef    = useRef(null);
+
+      const [display, setDisplay] = useState('0:00.0');
+      const [running, setRunning] = useState(false);
+
+      // Restore from localStorage once
+      useEffect(() => {
+        try {
+          const saved = JSON.parse(localStorage.getItem('swState2') || 'null');
+          if (saved) {
+            if (saved.running && saved.startedAt) {
+              baseRef.current = saved.base + (Date.now() - saved.startedAt);
+              startRef.current = Date.now();
+              runningRef.current = true;
+              setRunning(true);
+            } else {
+              baseRef.current = saved.base || 0;
+            }
+          }
+        } catch(e) {}
+      }, []);
+
+      // Animation loop – only updates local display state
+      useEffect(() => {
+        const tick = () => {
+          if (!runningRef.current) return;
+          const elapsed = (baseRef.current + (Date.now() - startRef.current)) / 1000;
+          const h = Math.floor(elapsed / 3600);
+          const m = Math.floor((elapsed % 3600) / 60);
+          const s = Math.floor(elapsed % 60);
+          const cs = Math.floor((elapsed % 1) * 10);
+          setDisplay(h > 0
+            ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${cs}`
+            : `${m}:${String(s).padStart(2,'0')}.${cs}`);
+          rafRef.current = requestAnimationFrame(tick);
+        };
+        if (running) {
+          rafRef.current = requestAnimationFrame(tick);
+        }
+        return () => cancelAnimationFrame(rafRef.current);
+      }, [running]);
+
+      // Persist to localStorage when running state changes
+      useEffect(() => {
+        const save = () => {
+          localStorage.setItem('swState2', JSON.stringify({
+            base: baseRef.current,
+            running: runningRef.current,
+            startedAt: runningRef.current ? startRef.current : null
+          }));
+        };
+        window.addEventListener('beforeunload', save);
+        document.addEventListener('visibilitychange', save);
+        return () => {
+          window.removeEventListener('beforeunload', save);
+          document.removeEventListener('visibilitychange', save);
+        };
+      }, []);
+
+      const handleStart = () => {
+        if (runningRef.current) return;
+        startRef.current = Date.now();
+        runningRef.current = true;
+        setRunning(true);
+      };
+
+      const handlePause = () => {
+        if (!runningRef.current) return;
+        baseRef.current += Date.now() - startRef.current;
+        startRef.current = null;
+        runningRef.current = false;
+        setRunning(false);
+      };
+
+      const handleReset = () => {
+        cancelAnimationFrame(rafRef.current);
+        baseRef.current = 0;
+        startRef.current = null;
+        runningRef.current = false;
+        setRunning(false);
+        setDisplay('0:00.0');
+        localStorage.removeItem('swState2');
+      };
+
+      return (
+        <div className="stopwatch-container">
+          <div className="stopwatch-time">{display}</div>
+          <div className="stopwatch-controls">
+            {!running
+              ? <button className="stopwatch-btn play"  onPointerDown={handleStart}>▶</button>
+              : <button className="stopwatch-btn pause" onPointerDown={handlePause}>⏸</button>
+            }
+            <button className="stopwatch-btn reset" onPointerDown={handleReset}>↻</button>
+          </div>
+        </div>
+      );
+    });
 
     function WorkoutTracker() {
       const [page, setPage] = useState('history');
@@ -116,84 +225,15 @@
       const [activeExerciseCalc, setActiveExerciseCalc] = useState(null);
       const [exercisePlates45, setExercisePlates45] = useState('');
       const [deleteConfirmIndex, setDeleteConfirmIndex] = useState(null);
-      const [stopwatchTime, setStopwatchTime] = useState(0);
-      const [stopwatchRunning, setStopwatchRunning] = useState(false);
+      const [deleteExerciseConfirm, setDeleteExerciseConfirm] = useState(null);
       const [viewingWorkout, setViewingWorkout] = useState(null);
       const [expandedGroups, setExpandedGroups] = useState({});
-      const [backgroundTime, setBackgroundTime] = useState(null);
-
-      // Stopwatch effect
-      useEffect(() => {
-        let interval;
-        if (stopwatchRunning) {
-          interval = setInterval(() => {
-            setStopwatchTime(prev => prev + 0.1);
-          }, 100);
-        }
-        return () => clearInterval(interval);
-      }, [stopwatchRunning]);
-
-      // Handle background/foreground to keep stopwatch running
-      useEffect(() => {
-        const handleVisibilityChange = () => {
-          if (document.hidden && stopwatchRunning) {
-            // App going to background - store current time
-            setBackgroundTime(Date.now());
-          } else if (!document.hidden && backgroundTime && stopwatchRunning) {
-            // App coming back to foreground - add elapsed time
-            const elapsedSeconds = (Date.now() - backgroundTime) / 1000;
-            setStopwatchTime(prev => prev + elapsedSeconds);
-            setBackgroundTime(null);
-          }
-        };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-      }, [stopwatchRunning, backgroundTime]);
-
-      const formatStopwatchTime = (time) => {
-        const hours = Math.floor(time / 3600);
-        const minutes = Math.floor((time % 3600) / 60);
-        const seconds = Math.floor(time % 60);
-        const centiseconds = Math.floor((time % 1) * 10);
-        
-        if (hours > 0) {
-          return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${centiseconds}`;
-        }
-        return `${minutes}:${seconds.toString().padStart(2, '0')}.${centiseconds}`;
-      };
-
-      const startStopwatch = () => setStopwatchRunning(true);
-      const stopStopwatch = () => setStopwatchRunning(false);
-      const resetStopwatch = () => {
-        setStopwatchRunning(false);
-        setStopwatchTime(0);
-        localStorage.removeItem('stopwatchState');
-      };
 
       useEffect(() => {
         const saved = localStorage.getItem('workoutHistory');
-        if (saved) {
-          setWorkoutHistory(JSON.parse(saved));
-        }
+        if (saved) setWorkoutHistory(JSON.parse(saved));
         const savedCustom = localStorage.getItem('customExercises');
-        if (savedCustom) {
-          setCustomExercises(JSON.parse(savedCustom));
-        }
-        // Load stopwatch state
-        const savedStopwatch = localStorage.getItem('stopwatchState');
-        if (savedStopwatch) {
-          const { time, running, backgroundTime: savedBgTime } = JSON.parse(savedStopwatch);
-          if (running && savedBgTime) {
-            // Calculate elapsed time since app was closed
-            const elapsedSeconds = (Date.now() - savedBgTime) / 1000;
-            setStopwatchTime(time + elapsedSeconds);
-            setStopwatchRunning(true);
-          } else {
-            setStopwatchTime(time);
-            setStopwatchRunning(running);
-          }
-        }
+        if (savedCustom) setCustomExercises(JSON.parse(savedCustom));
       }, []);
 
       useEffect(() => {
@@ -208,43 +248,21 @@
         }
       }, [customExercises]);
 
-      // Save stopwatch state
-      useEffect(() => {
-        const state = {
-          time: stopwatchTime,
-          running: stopwatchRunning,
-          backgroundTime: stopwatchRunning ? Date.now() : null
-        };
-        localStorage.setItem('stopwatchState', JSON.stringify(state));
-      }, [stopwatchTime, stopwatchRunning]);
-
       const startWorkout = (muscleGroup) => {
         const defaultExercises = MUSCLE_GROUPS[muscleGroup] || [];
         const customExercisesForGroup = customExercises[muscleGroup] || [];
         const groupExercises = [...defaultExercises, ...customExercisesForGroup];
-        
         const lastWorkout = workoutHistory
           .filter(w => w.muscleGroup === muscleGroup)
           .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-
         const initialExercises = groupExercises.map(name => {
           const lastExercise = lastWorkout?.exercises.find(e => e.name === name);
-          // Deep copy the sets array to avoid modifying the original workout
-          const copiedSets = lastExercise?.sets 
+          const copiedSets = lastExercise?.sets
             ? lastExercise.sets.map(set => ({ weight: set.weight, reps: set.reps }))
             : [{ weight: 0, reps: 0 }];
-          return {
-            name,
-            sets: copiedSets,
-            completed: false
-          };
+          return { name, sets: copiedSets, completed: false };
         });
-
-        setCurrentWorkout({
-          muscleGroup,
-          date: new Date().toISOString(),
-          exercises: initialExercises
-        });
+        setCurrentWorkout({ muscleGroup, date: new Date().toISOString(), exercises: initialExercises });
         setExercises(initialExercises);
         setPage('workout');
         setShowGroupSelect(false);
@@ -255,9 +273,7 @@
         updated.splice(index, 1);
         setWorkoutHistory(updated);
         setDeleteConfirmIndex(null);
-        if (updated.length === 0) {
-          localStorage.removeItem('workoutHistory');
-        }
+        if (updated.length === 0) localStorage.removeItem('workoutHistory');
       };
 
       const handleDeleteClick = (index) => {
@@ -294,6 +310,23 @@
         }
       };
 
+      // ── NEW: delete an exercise from the current workout ──
+      const deleteExercise = (index) => {
+        const updated = [...exercises];
+        updated.splice(index, 1);
+        setExercises(updated);
+        setDeleteExerciseConfirm(null);
+      };
+
+      // ── NEW: move exercise up or down ──
+      const moveExercise = (index, direction) => {
+        const newIndex = index + direction;
+        if (newIndex < 0 || newIndex >= exercises.length) return;
+        const updated = [...exercises];
+        [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
+        setExercises(updated);
+      };
+
       const toggleExerciseComplete = (exerciseIndex) => {
         const updated = [...exercises];
         updated[exerciseIndex].completed = !updated[exerciseIndex].completed;
@@ -301,11 +334,7 @@
       };
 
       const finishWorkout = () => {
-        const workout = {
-          ...currentWorkout,
-          exercises,
-          date: new Date().toISOString()
-        };
+        const workout = { ...currentWorkout, exercises, date: new Date().toISOString() };
         setWorkoutHistory([workout, ...workoutHistory]);
         setPage('history');
         setCurrentWorkout(null);
@@ -314,13 +343,10 @@
 
       const calculatePlates = (weight) => {
         const weightPerSide = weight / 2;
-        
         if (weightPerSide <= 0) return 'Enter weight';
-        
         const plates = [45, 35, 25, 10, 5, 2.5];
         const result = [];
         let remaining = weightPerSide;
-        
         for (const plate of plates) {
           const count = Math.floor(remaining / plate);
           if (count > 0) {
@@ -328,11 +354,7 @@
             remaining -= count * plate;
           }
         }
-        
-        if (remaining > 0.1) {
-          result.push(`+${remaining.toFixed(1)}lb`);
-        }
-        
+        if (remaining > 0.1) result.push(`+${remaining.toFixed(1)}lb`);
         return result.length > 0 ? result.join(' + ') : 'No plates needed';
       };
 
@@ -343,41 +365,25 @@
 
       const addCustomExercise = () => {
         if (!newExerciseName.trim() || !currentWorkout) return;
-        
         const muscleGroup = currentWorkout.muscleGroup;
         const updated = { ...customExercises };
-        if (!updated[muscleGroup]) {
-          updated[muscleGroup] = [];
-        }
-        
+        if (!updated[muscleGroup]) updated[muscleGroup] = [];
         if (!updated[muscleGroup].includes(newExerciseName.trim())) {
           updated[muscleGroup].push(newExerciseName.trim());
           setCustomExercises(updated);
-          
-          const newExercise = {
-            name: newExerciseName.trim(),
-            sets: [{ weight: 0, reps: 0 }],
-            completed: false
-          };
+          const newExercise = { name: newExerciseName.trim(), sets: [{ weight: 0, reps: 0 }], completed: false };
           setExercises([...exercises, newExercise]);
         }
-        
         setNewExerciseName('');
         setShowAddExercise(false);
       };
 
       const applyPlatesWeightToExercise = (exerciseIndex) => {
         if (!exercisePlates45) return;
-        
         const calculatedWeight = calculateWeightFrom45s(parseFloat(exercisePlates45));
         const updated = [...exercises];
         const lastSet = updated[exerciseIndex].sets[updated[exerciseIndex].sets.length - 1];
-        
-        updated[exerciseIndex].sets.push({ 
-          weight: calculatedWeight, 
-          reps: lastSet.reps || 0 
-        });
-        
+        updated[exerciseIndex].sets.push({ weight: calculatedWeight, reps: lastSet.reps || 0 });
         setExercises(updated);
         setActiveExerciseCalc(null);
         setExercisePlates45('');
@@ -388,41 +394,28 @@
         const today = new Date();
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
-
         if (date.toDateString() === today.toDateString()) return 'Today';
         if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-        
-        // Format as "Monday, Jan 15"
         const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' });
         const month = date.toLocaleDateString('en-US', { month: 'short' });
         const day = date.getDate();
-        
         return `${dayOfWeek}, ${month} ${day}`;
       };
 
-      const getTotalVolume = (workout) => {
-        return workout.exercises.reduce((total, ex) => {
-          return total + ex.sets.reduce((sum, set) => sum + (set.weight * set.reps), 0);
-        }, 0);
-      };
+      const getTotalVolume = (workout) =>
+        workout.exercises.reduce((total, ex) =>
+          total + ex.sets.reduce((sum, set) => sum + (set.weight * set.reps), 0), 0);
 
-      const getFilledSetsCount = (workout) => {
-        return workout.exercises.reduce((total, ex) => {
-          return total + ex.sets.filter(set => set.weight > 0 || set.reps > 0).length;
-        }, 0);
-      };
+      const getFilledSetsCount = (workout) =>
+        workout.exercises.reduce((total, ex) =>
+          total + ex.sets.filter(set => set.weight > 0 || set.reps > 0).length, 0);
 
-      const getFilledExercisesCount = (workout) => {
-        return workout.exercises.filter(ex => 
-          ex.sets.some(set => set.weight > 0 || set.reps > 0)
-        ).length;
-      };
+      const getFilledExercisesCount = (workout) =>
+        workout.exercises.filter(ex => ex.sets.some(set => set.weight > 0 || set.reps > 0)).length;
 
       const getExercisePR = (exerciseName, muscleGroup) => {
         const relevantWorkouts = workoutHistory.filter(w => w.muscleGroup === muscleGroup);
-        let maxWeight = 0;
-        let maxVolume = 0;
-        
+        let maxWeight = 0, maxVolume = 0;
         relevantWorkouts.forEach(workout => {
           const exercise = workout.exercises.find(ex => ex.name === exerciseName);
           if (exercise) {
@@ -433,23 +426,18 @@
             });
           }
         });
-        
         return { maxWeight, maxVolume };
       };
 
       const compareWithPrevious = (currentWorkout) => {
         if (!currentWorkout) return null;
-        
         const previousWorkouts = workoutHistory
           .filter(w => w.muscleGroup === currentWorkout.muscleGroup)
           .sort((a, b) => new Date(b.date) - new Date(a.date));
-        
         if (previousWorkouts.length === 0) return null;
-        
         const previous = previousWorkouts[0];
         const currentVolume = getTotalVolume(currentWorkout);
         const previousVolume = getTotalVolume(previous);
-        
         return {
           volumeDiff: currentVolume - previousVolume,
           volumePercent: previousVolume > 0 ? ((currentVolume - previousVolume) / previousVolume * 100) : 0,
@@ -460,69 +448,48 @@
       const groupWorkoutsByMuscle = () => {
         const grouped = {};
         workoutHistory.forEach(workout => {
-          if (!grouped[workout.muscleGroup]) {
-            grouped[workout.muscleGroup] = [];
-          }
+          if (!grouped[workout.muscleGroup]) grouped[workout.muscleGroup] = [];
           grouped[workout.muscleGroup].push(workout);
         });
         return grouped;
       };
 
       const toggleGroup = (muscleGroup) => {
-        setExpandedGroups(prev => ({
-          ...prev,
-          [muscleGroup]: !prev[muscleGroup]
-        }));
+        setExpandedGroups(prev => ({ ...prev, [muscleGroup]: !prev[muscleGroup] }));
       };
 
       const getExerciseProgressData = () => {
         const exerciseData = {};
-        
-        // Collect data for all exercises across all workouts
         workoutHistory.forEach(workout => {
           workout.exercises.forEach(exercise => {
-            const totalWeight = exercise.sets.reduce((sum, set) => 
-              sum + (set.weight * set.reps), 0
-            );
-            
+            const totalWeight = exercise.sets.reduce((sum, set) => sum + (set.weight * set.reps), 0);
             if (totalWeight > 0) {
               if (!exerciseData[exercise.name]) {
-                exerciseData[exercise.name] = {
-                  name: exercise.name,
-                  totalWeight: 0,
-                  workoutCount: 0,
-                  lastWorkout: null
-                };
+                exerciseData[exercise.name] = { name: exercise.name, totalWeight: 0, workoutCount: 0, lastWorkout: null };
               }
-              
               exerciseData[exercise.name].totalWeight += totalWeight;
               exerciseData[exercise.name].workoutCount += 1;
-              
               const workoutDate = new Date(workout.date);
-              if (!exerciseData[exercise.name].lastWorkout || 
-                  workoutDate > new Date(exerciseData[exercise.name].lastWorkout)) {
+              if (!exerciseData[exercise.name].lastWorkout || workoutDate > new Date(exerciseData[exercise.name].lastWorkout)) {
                 exerciseData[exercise.name].lastWorkout = workout.date;
               }
             }
           });
         });
-        
-        // Convert to array and sort by total weight
         return Object.values(exerciseData).sort((a, b) => b.totalWeight - a.totalWeight);
       };
+
+      // ── Shared Stopwatch Widget ──
+      const StopwatchWidget = () => <Stopwatch />;
 
       return (
         <div className="app">
           <style>{`
             @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap');
-            
-            * {
-              margin: 0;
-              padding: 0;
-              box-sizing: border-box;
-            }
 
-            body {
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+
+            html, body {
               font-family: 'Inter', sans-serif;
               background: #0a0a0a;
               color: #fff;
@@ -536,22 +503,26 @@
               padding-bottom: 20px;
             }
 
+            /* ── STICKY TOP BAR ── */
+            .sticky-top {
+              position: sticky;
+              top: 0;
+              z-index: 500;
+            }
+
             .header {
               background: linear-gradient(135deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%);
               padding: 31px 20px 15px;
               box-shadow: 0 10px 40px rgba(255, 69, 0, 0.5);
               position: relative;
               overflow: hidden;
-              border-radius: 0 0 24px 24px;
+              border-radius: 0 0 0 0;
             }
 
             .header::before {
               content: '';
               position: absolute;
-              top: 0;
-              left: 0;
-              right: 0;
-              bottom: 0;
+              top: 0; left: 0; right: 0; bottom: 0;
               background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
               opacity: 0.5;
             }
@@ -570,26 +541,24 @@
               text-shadow: 3px 3px 6px rgba(0,0,0,0.4);
             }
 
-            /* Stopwatch */
+            /* ── STOPWATCH ── */
             .stopwatch-container {
               display: flex;
               align-items: center;
               justify-content: space-between;
               gap: 12px;
-              padding: 12px 20px;
-              background: linear-gradient(135deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.6) 100%);
-              border-radius: 16px;
-              border: 1px solid rgba(255, 102, 0, 0.3);
-              box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-              margin: 12px 20px 8px;
+              padding: 10px 20px;
+              background: rgba(10, 10, 10, 0.97);
+              border-bottom: 1px solid rgba(255, 102, 0, 0.25);
+              box-shadow: 0 4px 16px rgba(0,0,0,0.5);
             }
 
             .stopwatch-time {
               font-family: 'Courier New', monospace;
-              font-size: 36px;
+              font-size: 34px;
               font-weight: bold;
               color: white;
-              min-width: 160px;
+              min-width: 150px;
               text-align: left;
               letter-spacing: 2px;
             }
@@ -613,25 +582,14 @@
               transition: all 0.3s ease;
             }
 
-            .stopwatch-btn.play {
-              background: #4ade80;
-            }
+            .stopwatch-btn.play { background: #4ade80; }
+            .stopwatch-btn.pause { background: #ff6600; }
+            .stopwatch-btn.reset { background: rgba(255,255,255,0.2); }
+            .stopwatch-btn:active { transform: scale(0.95); }
 
-            .stopwatch-btn.pause {
-              background: #ff6600;
-            }
-
-            .stopwatch-btn.reset {
-              background: rgba(255, 255, 255, 0.2);
-            }
-
-            .stopwatch-btn:active {
-              transform: scale(0.95);
-            }
-
+            /* ── HISTORY PAGE ── */
             .start-workout-section {
-              padding: 20px;
-              margin-top: -15px;
+              padding: 20px 20px 0;
             }
 
             .start-btn {
@@ -654,17 +612,11 @@
               transition: all 0.3s ease;
             }
 
-            .start-btn:active {
-              transform: scale(0.98);
-              box-shadow: 0 4px 12px rgba(255, 69, 0, 0.5);
-            }
+            .start-btn:active { transform: scale(0.98); box-shadow: 0 4px 12px rgba(255, 69, 0, 0.5); }
 
             .muscle-group-modal {
               position: fixed;
-              top: 0;
-              left: 0;
-              right: 0;
-              bottom: 0;
+              top: 0; left: 0; right: 0; bottom: 0;
               background: rgba(0, 0, 0, 0.9);
               z-index: 1000;
               display: flex;
@@ -672,15 +624,11 @@
               animation: fadeIn 0.3s ease;
             }
 
-            @keyframes fadeIn {
-              from { opacity: 0; }
-              to { opacity: 1; }
-            }
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
             .modal-header {
               padding: 31px 20px 14px;
               background: linear-gradient(135deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%);
-              border-radius: 0 0 24px 24px;
             }
 
             .modal-header h2 {
@@ -714,11 +662,7 @@
               justify-content: space-between;
             }
 
-            .muscle-group-btn:active {
-              background: rgba(255, 69, 0, 0.2);
-              border-color: #ff4500;
-              transform: scale(0.98);
-            }
+            .muscle-group-btn:active { background: rgba(255, 69, 0, 0.2); border-color: #ff4500; transform: scale(0.98); }
 
             .close-modal-btn {
               position: fixed;
@@ -763,43 +707,16 @@
               transition: all 0.3s ease;
             }
 
-            .workout-card:active {
-              background: rgba(255, 255, 255, 0.08);
-              transform: scale(0.98);
-            }
+            .workout-card:active { background: rgba(255, 255, 255, 0.08); transform: scale(0.98); }
 
             @keyframes slideIn {
-              from {
-                opacity: 0;
-                transform: translateY(20px);
-              }
-              to {
-                opacity: 1;
-                transform: translateY(0);
-              }
+              from { opacity: 0; transform: translateY(20px); }
+              to { opacity: 1; transform: translateY(0); }
             }
 
-            .workout-card-header {
-              display: flex;
-              justify-content: space-between;
-              align-items: flex-start;
-              margin-bottom: 15px;
-            }
-
-            .workout-title {
-              font-size: 20px;
-              font-weight: 700;
-              color: #ff6600;
-              margin-bottom: 5px;
-            }
-
-            .workout-date {
-              font-size: 13px;
-              opacity: 0.6;
-              display: flex;
-              align-items: center;
-              gap: 5px;
-            }
+            .workout-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px; }
+            .workout-title { font-size: 20px; font-weight: 700; color: #ff6600; margin-bottom: 5px; }
+            .workout-date { font-size: 13px; opacity: 0.6; display: flex; align-items: center; gap: 5px; }
 
             .workout-stats {
               display: flex;
@@ -809,35 +726,12 @@
               border-top: 1px solid rgba(255, 255, 255, 0.1);
             }
 
-            .stat {
-              flex: 1;
-            }
+            .stat { flex: 1; }
+            .stat-label { font-size: 11px; opacity: 0.5; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
+            .stat-value { font-size: 20px; font-weight: 700; color: #ff6600; }
+            .exercise-summary { font-size: 13px; opacity: 0.7; line-height: 1.6; }
 
-            .stat-label {
-              font-size: 11px;
-              opacity: 0.5;
-              text-transform: uppercase;
-              letter-spacing: 1px;
-              margin-bottom: 5px;
-            }
-
-            .stat-value {
-              font-size: 20px;
-              font-weight: 700;
-              color: #ff6600;
-            }
-
-            .exercise-summary {
-              font-size: 13px;
-              opacity: 0.7;
-              line-height: 1.6;
-            }
-
-            .workout-card-actions {
-              display: flex;
-              gap: 8px;
-              align-items: center;
-            }
+            .workout-card-actions { display: flex; gap: 8px; align-items: center; }
 
             .view-workout-btn {
               background: rgba(255, 102, 0, 0.15);
@@ -854,24 +748,13 @@
               gap: 6px;
             }
 
-            .view-workout-btn:active {
-              background: rgba(255, 102, 0, 0.25);
-              transform: scale(0.95);
-            }
+            .view-workout-btn:active { background: rgba(255, 102, 0, 0.25); transform: scale(0.95); }
 
-            .empty-state {
-              text-align: center;
-              padding: 60px 20px;
-              opacity: 0.5;
-            }
+            .empty-state { text-align: center; padding: 60px 20px; opacity: 0.5; }
+            .empty-state-icon { margin-bottom: 20px; }
 
-            .empty-state-icon {
-              margin-bottom: 20px;
-            }
-
-            .workout-page {
-              min-height: 100vh;
-            }
+            /* ── WORKOUT PAGE ── */
+            .workout-page { min-height: 100vh; }
 
             .workout-header {
               background: linear-gradient(135deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%);
@@ -880,7 +763,6 @@
               align-items: center;
               gap: 15px;
               box-shadow: 0 4px 24px rgba(255, 69, 0, 0.4);
-              border-radius: 0 0 24px 24px;
             }
 
             .workout-header h2 {
@@ -904,16 +786,13 @@
               backdrop-filter: blur(10px);
             }
 
-            .exercises-list {
-              padding: 20px;
-              padding-bottom: 180px;
-            }
+            .exercises-list { padding: 20px; padding-bottom: 180px; }
 
             .exercise-card {
               background: rgba(255, 255, 255, 0.05);
               border: 1px solid rgba(255, 255, 255, 0.1);
               border-radius: 16px;
-              padding: 20px;
+              padding: 16px;
               margin-bottom: 20px;
               position: relative;
             }
@@ -927,40 +806,89 @@
               display: flex;
               justify-content: space-between;
               align-items: flex-start;
-              margin-bottom: 15px;
+              margin-bottom: 12px;
+              gap: 8px;
             }
 
             .exercise-name {
-              font-size: 18px;
+              font-size: 17px;
               font-weight: 700;
               color: #fff;
               flex: 1;
+              line-height: 1.3;
             }
 
-            .exercise-actions {
+            /* ── EXERCISE CONTROLS (reorder + delete + plates + done) ── */
+            .exercise-controls {
               display: flex;
               align-items: center;
-              gap: 8px;
+              gap: 4px;
+              flex-shrink: 0;
+            }
+
+            .reorder-btn {
+              background: rgba(255, 255, 255, 0.08);
+              border: 1px solid rgba(255, 255, 255, 0.15);
+              color: rgba(255,255,255,0.7);
+              width: 30px;
+              height: 30px;
+              border-radius: 6px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              cursor: pointer;
+              font-size: 14px;
+              transition: all 0.2s ease;
+              padding: 0;
+            }
+
+            .reorder-btn:active { background: rgba(255,255,255,0.15); transform: scale(0.9); }
+            .reorder-btn:disabled { opacity: 0.2; cursor: default; }
+
+            .exercise-delete-btn {
+              background: rgba(239, 68, 68, 0.12);
+              border: 1px solid rgba(239, 68, 68, 0.25);
+              color: #ef4444;
+              width: 30px;
+              height: 30px;
+              border-radius: 6px;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              cursor: pointer;
+              transition: all 0.2s ease;
+              padding: 0;
+            }
+
+            .exercise-delete-btn:active { background: rgba(239, 68, 68, 0.25); transform: scale(0.9); }
+
+            .exercise-delete-btn.confirm {
+              background: rgba(239, 68, 68, 0.85);
+              border-color: #ef4444;
+              color: white;
+              width: auto;
+              padding: 0 8px;
+              font-size: 11px;
+              font-weight: 700;
+              animation: pulse 0.4s ease;
             }
 
             .exercise-plate-btn {
               background: rgba(255, 102, 0, 0.15);
               border: 1px solid rgba(255, 102, 0, 0.3);
               color: #ff6600;
-              padding: 6px 12px;
+              padding: 0 8px;
+              height: 30px;
               border-radius: 6px;
               font-size: 11px;
               font-weight: 600;
               cursor: pointer;
-              transition: all 0.3s ease;
+              transition: all 0.2s ease;
               text-transform: uppercase;
               letter-spacing: 0.5px;
             }
 
-            .exercise-plate-btn:active {
-              background: rgba(255, 102, 0, 0.25);
-              transform: scale(0.95);
-            }
+            .exercise-plate-btn:active { background: rgba(255, 102, 0, 0.25); transform: scale(0.95); }
 
             .complete-checkbox {
               width: 28px;
@@ -972,16 +900,12 @@
               justify-content: center;
               cursor: pointer;
               transition: all 0.3s ease;
+              flex-shrink: 0;
             }
 
-            .complete-checkbox.checked {
-              background: #4ade80;
-              border-color: #4ade80;
-            }
+            .complete-checkbox.checked { background: #4ade80; border-color: #4ade80; }
 
-            .sets-list {
-              margin-bottom: 15px;
-            }
+            .sets-list { margin-bottom: 15px; }
 
             .set-row {
               display: grid;
@@ -991,28 +915,11 @@
               margin-bottom: 10px;
             }
 
-            .set-row.readonly {
-              grid-template-columns: 40px 1fr 1fr;
-            }
+            .set-row.readonly { grid-template-columns: 40px 1fr 1fr; }
+            .set-number { font-size: 14px; font-weight: 700; opacity: 0.5; }
 
-            .set-number {
-              font-size: 14px;
-              font-weight: 700;
-              opacity: 0.5;
-            }
-
-            .set-input-group {
-              display: flex;
-              flex-direction: column;
-              gap: 5px;
-            }
-
-            .set-input-label {
-              font-size: 10px;
-              opacity: 0.5;
-              text-transform: uppercase;
-              letter-spacing: 1px;
-            }
+            .set-input-group { display: flex; flex-direction: column; gap: 5px; }
+            .set-input-label { font-size: 10px; opacity: 0.5; text-transform: uppercase; letter-spacing: 1px; }
 
             .set-input {
               background: rgba(0, 0, 0, 0.3);
@@ -1026,10 +933,7 @@
               width: 100%;
             }
 
-            .set-input:focus {
-              outline: none;
-              border-color: #ff6600;
-            }
+            .set-input:focus { outline: none; border-color: #ff6600; }
 
             .set-value {
               background: rgba(0, 0, 0, 0.3);
@@ -1075,10 +979,7 @@
               transition: all 0.3s ease;
             }
 
-            .add-set-btn:active {
-              background: rgba(255, 69, 0, 0.2);
-              transform: scale(0.98);
-            }
+            .add-set-btn:active { background: rgba(255, 69, 0, 0.2); transform: scale(0.98); }
 
             .finish-workout-btn {
               position: fixed;
@@ -1102,9 +1003,7 @@
               gap: 10px;
             }
 
-            .finish-workout-btn:active {
-              transform: scale(0.98);
-            }
+            .finish-workout-btn:active { transform: scale(0.98); }
 
             .delete-workout-btn {
               background: rgba(239, 68, 68, 0.15);
@@ -1123,10 +1022,7 @@
               justify-content: center;
             }
 
-            .delete-workout-btn:active {
-              background: rgba(239, 68, 68, 0.25);
-              transform: scale(0.95);
-            }
+            .delete-workout-btn:active { background: rgba(239, 68, 68, 0.25); transform: scale(0.95); }
 
             .delete-workout-btn.confirm {
               background: rgba(239, 68, 68, 0.9);
@@ -1149,20 +1045,14 @@
               font-size: 12px;
               font-weight: 600;
               cursor: pointer;
-              margin-left: 8px;
               transition: all 0.3s ease;
             }
 
-            .plate-calc-btn:active {
-              background: rgba(255, 255, 255, 0.1);
-            }
+            .plate-calc-btn:active { background: rgba(255, 255, 255, 0.1); }
 
             .calculator-modal {
               position: fixed;
-              top: 0;
-              left: 0;
-              right: 0;
-              bottom: 0;
+              top: 0; left: 0; right: 0; bottom: 0;
               background: rgba(0, 0, 0, 0.95);
               z-index: 2000;
               display: flex;
@@ -1203,10 +1093,7 @@
               margin-bottom: 15px;
             }
 
-            .calculator-input:focus {
-              outline: none;
-              border-color: #ff6600;
-            }
+            .calculator-input:focus { outline: none; border-color: #ff6600; }
 
             .calculator-result {
               background: rgba(255, 102, 0, 0.1);
@@ -1217,21 +1104,8 @@
               text-align: center;
             }
 
-            .result-label {
-              font-size: 12px;
-              opacity: 0.6;
-              text-transform: uppercase;
-              letter-spacing: 1px;
-              margin-bottom: 8px;
-            }
-
-            .result-value {
-              font-size: 24px;
-              font-weight: 700;
-              color: #ff6600;
-              font-family: 'Bebas Neue', sans-serif;
-              letter-spacing: 1px;
-            }
+            .result-label { font-size: 12px; opacity: 0.6; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+            .result-value { font-size: 24px; font-weight: 700; color: #ff6600; font-family: 'Bebas Neue', sans-serif; letter-spacing: 1px; }
 
             .modal-btn {
               width: 100%;
@@ -1246,10 +1120,7 @@
               margin-top: 15px;
             }
 
-            .add-exercise-section {
-              margin-top: 20px;
-              padding: 0 20px 200px;
-            }
+            .add-exercise-section { margin-top: 20px; padding: 0 20px 200px; }
 
             .add-exercise-btn {
               width: 100%;
@@ -1269,10 +1140,7 @@
 
             .add-exercise-modal {
               position: fixed;
-              top: 0;
-              left: 0;
-              right: 0;
-              bottom: 0;
+              top: 0; left: 0; right: 0; bottom: 0;
               background: rgba(0, 0, 0, 0.95);
               z-index: 2000;
               display: flex;
@@ -1311,15 +1179,9 @@
               margin-bottom: 15px;
             }
 
-            .exercise-input:focus {
-              outline: none;
-              border-color: #ff6600;
-            }
+            .exercise-input:focus { outline: none; border-color: #ff6600; }
 
-            .modal-btn-group {
-              display: flex;
-              gap: 10px;
-            }
+            .modal-btn-group { display: flex; gap: 10px; }
 
             .modal-btn-primary {
               flex: 1;
@@ -1333,10 +1195,7 @@
               cursor: pointer;
             }
 
-            .modal-btn-primary:disabled {
-              opacity: 0.5;
-              cursor: not-allowed;
-            }
+            .modal-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
             .modal-btn-secondary {
               flex: 1;
@@ -1350,16 +1209,10 @@
               cursor: pointer;
             }
 
-            .detail-page {
-              min-height: 100vh;
-              padding-bottom: 80px;
-            }
+            /* ── DETAIL PAGE ── */
+            .detail-page { min-height: 100vh; padding-bottom: 80px; }
 
-            .muscle-group-stack {
-              position: relative;
-              margin-bottom: 20px;
-              cursor: pointer;
-            }
+            .muscle-group-stack { position: relative; margin-bottom: 20px; cursor: pointer; }
 
             .muscle-group-header {
               background: rgba(255, 255, 255, 0.05);
@@ -1370,17 +1223,12 @@
               transition: all 0.3s ease;
             }
 
-            .muscle-group-header:active {
-              background: rgba(255, 255, 255, 0.08);
-              transform: scale(0.98);
-            }
+            .muscle-group-header:active { background: rgba(255, 255, 255, 0.08); transform: scale(0.98); }
 
             .muscle-group-header.has-stack::before {
               content: '';
               position: absolute;
-              top: -4px;
-              left: 8px;
-              right: 8px;
+              top: -4px; left: 8px; right: 8px;
               height: 100%;
               background: rgba(255, 255, 255, 0.03);
               border: 1px solid rgba(255, 255, 255, 0.08);
@@ -1391,9 +1239,7 @@
             .muscle-group-header.has-stack::after {
               content: '';
               position: absolute;
-              top: -8px;
-              left: 16px;
-              right: 16px;
+              top: -8px; left: 16px; right: 16px;
               height: 100%;
               background: rgba(255, 255, 255, 0.02);
               border: 1px solid rgba(255, 255, 255, 0.05);
@@ -1401,12 +1247,7 @@
               z-index: -2;
             }
 
-            .muscle-group-title-row {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              margin-bottom: 8px;
-            }
+            .muscle-group-title-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 
             .muscle-group-name {
               font-size: 20px;
@@ -1427,19 +1268,9 @@
               border-radius: 12px;
             }
 
-            .expand-icon {
-              transition: transform 0.3s ease;
-            }
-
-            .expand-icon.expanded {
-              transform: rotate(180deg);
-            }
-
-            .group-summary {
-              font-size: 13px;
-              opacity: 0.7;
-              margin-top: 8px;
-            }
+            .expand-icon { transition: transform 0.3s ease; }
+            .expand-icon.expanded { transform: rotate(180deg); }
+            .group-summary { font-size: 13px; opacity: 0.7; margin-top: 8px; }
 
             .expanded-workouts {
               margin-top: 15px;
@@ -1449,14 +1280,8 @@
             }
 
             @keyframes slideDown {
-              from {
-                opacity: 0;
-                max-height: 0;
-              }
-              to {
-                opacity: 1;
-                max-height: 2000px;
-              }
+              from { opacity: 0; max-height: 0; }
+              to { opacity: 1; max-height: 2000px; }
             }
 
             .individual-workout {
@@ -1469,21 +1294,10 @@
               transition: all 0.3s ease;
             }
 
-            .individual-workout:active {
-              background: rgba(0, 0, 0, 0.3);
-              transform: scale(0.98);
-            }
+            .individual-workout:active { background: rgba(0, 0, 0, 0.3); transform: scale(0.98); }
+            .individual-workout:last-child { margin-bottom: 0; }
 
-            .individual-workout:last-child {
-              margin-bottom: 0;
-            }
-
-            .workout-mini-header {
-              display: flex;
-              justify-content: space-between;
-              align-items: center;
-              margin-bottom: 10px;
-            }
+            .workout-mini-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 
             .progress-indicator {
               display: inline-flex;
@@ -1496,23 +1310,9 @@
               margin-left: 8px;
             }
 
-            .progress-indicator.up {
-              background: rgba(74, 222, 128, 0.15);
-              color: #4ade80;
-              border: 1px solid rgba(74, 222, 128, 0.3);
-            }
-
-            .progress-indicator.down {
-              background: rgba(239, 68, 68, 0.15);
-              color: #ef4444;
-              border: 1px solid rgba(239, 68, 68, 0.3);
-            }
-
-            .progress-indicator.same {
-              background: rgba(255, 255, 255, 0.05);
-              color: rgba(255, 255, 255, 0.6);
-              border: 1px solid rgba(255, 255, 255, 0.1);
-            }
+            .progress-indicator.up { background: rgba(74, 222, 128, 0.15); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3); }
+            .progress-indicator.down { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+            .progress-indicator.same { background: rgba(255, 255, 255, 0.05); color: rgba(255, 255, 255, 0.6); border: 1px solid rgba(255, 255, 255, 0.1); }
 
             .pr-badge {
               display: inline-flex;
@@ -1538,27 +1338,10 @@
               margin-bottom: 20px;
             }
 
-            .previous-workout-title {
-              font-size: 12px;
-              text-transform: uppercase;
-              letter-spacing: 1px;
-              color: #ff6600;
-              margin-bottom: 10px;
-              font-weight: 600;
-            }
+            .previous-workout-title { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #ff6600; margin-bottom: 10px; font-weight: 600; }
 
-            .set-comparison {
-              display: flex;
-              align-items: center;
-              gap: 8px;
-              font-size: 11px;
-              color: rgba(255, 255, 255, 0.5);
-              margin-top: 4px;
-            }
-
-            .set-comparison.improved {
-              color: #4ade80;
-            }
+            .set-comparison { display: flex; align-items: center; gap: 8px; font-size: 11px; color: rgba(255, 255, 255, 0.5); margin-top: 4px; }
+            .set-comparison.improved { color: #4ade80; }
 
             .exercise-progress-section {
               background: linear-gradient(135deg, rgba(255, 102, 0, 0.1) 0%, rgba(255, 140, 0, 0.05) 100%);
@@ -1568,45 +1351,13 @@
               margin-bottom: 20px;
             }
 
-            .exercise-progress-title {
-              font-size: 14px;
-              font-weight: 600;
-              color: #ff6600;
-              margin-bottom: 20px;
-              text-transform: uppercase;
-              letter-spacing: 1px;
-            }
+            .exercise-progress-title { font-size: 14px; font-weight: 600; color: #ff6600; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; }
 
-            .exercise-chart {
-              display: flex;
-              flex-direction: column;
-              gap: 12px;
-            }
+            .exercise-chart { display: flex; flex-direction: column; gap: 12px; }
 
-            .exercise-bar-item {
-              display: flex;
-              align-items: center;
-              gap: 10px;
-            }
-
-            .exercise-bar-label {
-              font-size: 12px;
-              font-weight: 600;
-              min-width: 100px;
-              max-width: 100px;
-              overflow: hidden;
-              text-overflow: ellipsis;
-              white-space: nowrap;
-            }
-
-            .exercise-bar-container {
-              flex: 1;
-              height: 24px;
-              background: rgba(0, 0, 0, 0.3);
-              border-radius: 12px;
-              overflow: hidden;
-              position: relative;
-            }
+            .exercise-bar-item { display: flex; align-items: center; gap: 10px; }
+            .exercise-bar-label { font-size: 12px; font-weight: 600; min-width: 100px; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+            .exercise-bar-container { flex: 1; height: 24px; background: rgba(0,0,0,0.3); border-radius: 12px; overflow: hidden; position: relative; }
 
             .exercise-bar-fill {
               height: 100%;
@@ -1619,54 +1370,27 @@
               padding-right: 8px;
             }
 
-            .exercise-bar-value {
-              font-size: 10px;
-              font-weight: 700;
-              color: white;
-              text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-              white-space: nowrap;
-            }
-
-            .exercise-bar-count {
-              font-size: 10px;
-              opacity: 0.6;
-              margin-left: 8px;
-            }
+            .exercise-bar-value { font-size: 10px; font-weight: 700; color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.5); white-space: nowrap; }
+            .exercise-bar-count { font-size: 10px; opacity: 0.6; margin-left: 8px; }
 
             @media (min-width: 768px) {
-              .app {
-                max-width: 428px;
-                margin: 0 auto;
-                box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
-              }
+              .app { max-width: 428px; margin: 0 auto; box-shadow: 0 0 50px rgba(0,0,0,0.5); }
             }
           `}</style>
 
-          {page === 'history' ? (
+          {/* ══════════════════════════════════════════
+              HISTORY PAGE
+          ══════════════════════════════════════════ */}
+          {page === 'history' && (
             <>
-              <div className="header">
-                <div className="header-content">
-                  <h1>IRON LOG</h1>
+              {/* Sticky top bar: title + timer */}
+              <div className="sticky-top">
+                <div className="header">
+                  <div className="header-content">
+                    <h1>IRON LOG</h1>
+                  </div>
                 </div>
-              </div>
-
-              {/* Stopwatch */}
-              <div className="stopwatch-container">
-                <div className="stopwatch-time">{formatStopwatchTime(stopwatchTime)}</div>
-                <div className="stopwatch-controls">
-                  {!stopwatchRunning ? (
-                    <button className="stopwatch-btn play" onClick={startStopwatch}>
-                      ▶
-                    </button>
-                  ) : (
-                    <button className="stopwatch-btn pause" onClick={stopStopwatch}>
-                      ⏸
-                    </button>
-                  )}
-                  <button className="stopwatch-btn reset" onClick={resetStopwatch}>
-                    ↻
-                  </button>
-                </div>
+                <StopwatchWidget />
               </div>
 
               <div className="start-workout-section">
@@ -1684,97 +1408,55 @@
 
                 {workoutHistory.length > 0 && (
                   <>
-                    <div style={{
-                      background: 'linear-gradient(135deg, rgba(255, 102, 0, 0.1) 0%, rgba(255, 140, 0, 0.05) 100%)',
-                      border: '1px solid rgba(255, 102, 0, 0.3)',
-                      borderRadius: '16px',
-                      padding: '20px',
-                      marginBottom: '20px'
-                    }}>
-                      <div style={{ 
-                        fontSize: '14px', 
-                        fontWeight: '600', 
-                        color: '#ff6600', 
-                        marginBottom: '15px',
-                        textTransform: 'uppercase',
-                        letterSpacing: '1px'
-                      }}>
-                        Overall Stats
-                      </div>
+                    <div style={{ background: 'linear-gradient(135deg, rgba(255, 102, 0, 0.1) 0%, rgba(255, 140, 0, 0.05) 100%)', border: '1px solid rgba(255, 102, 0, 0.3)', borderRadius: '16px', padding: '20px', marginBottom: '20px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '600', color: '#ff6600', marginBottom: '15px', textTransform: 'uppercase', letterSpacing: '1px' }}>Overall Stats</div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px' }}>
                         <div>
                           <div className="stat-label">Total Workouts</div>
-                          <div className="stat-value" style={{ fontSize: '24px' }}>
-                            {workoutHistory.length}
-                          </div>
+                          <div className="stat-value" style={{ fontSize: '24px' }}>{workoutHistory.length}</div>
                         </div>
                         <div>
                           <div className="stat-label">This Week</div>
                           <div className="stat-value" style={{ fontSize: '24px' }}>
-                            {(() => {
-                              const oneWeekAgo = new Date();
-                              oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-                              return workoutHistory.filter(w => new Date(w.date) >= oneWeekAgo).length;
-                            })()}
+                            {(() => { const d = new Date(); d.setDate(d.getDate() - 7); return workoutHistory.filter(w => new Date(w.date) >= d).length; })()}
                           </div>
                         </div>
                         <div>
                           <div className="stat-label">Total Volume</div>
                           <div className="stat-value" style={{ fontSize: '24px' }}>
-                            {(() => {
-                              const total = workoutHistory.reduce((sum, w) => sum + getTotalVolume(w), 0);
-                              return total >= 1000 ? `${(total / 1000).toFixed(0)}k` : total;
-                            })()}
+                            {(() => { const t = workoutHistory.reduce((s, w) => s + getTotalVolume(w), 0); return t >= 1000 ? `${(t/1000).toFixed(0)}k` : t; })()}
                           </div>
                         </div>
                       </div>
                     </div>
 
                     <div className="exercise-progress-section">
-                      <div className="exercise-progress-title">
-                        Progress by Exercise
-                      </div>
+                      <div className="exercise-progress-title">Progress by Exercise</div>
                       <div className="exercise-chart">
                         {(() => {
                           const exerciseData = getExerciseProgressData();
                           const maxWeight = Math.max(...exerciseData.map(e => e.totalWeight), 1);
-                          
                           return exerciseData.slice(0, 8).map((exercise, index) => {
                             const percentage = (exercise.totalWeight / maxWeight) * 100;
-                            const displayValue = exercise.totalWeight >= 1000 
-                              ? `${(exercise.totalWeight / 1000).toFixed(1)}k` 
+                            const displayValue = exercise.totalWeight >= 1000
+                              ? `${(exercise.totalWeight / 1000).toFixed(1)}k`
                               : exercise.totalWeight.toLocaleString();
-                            
                             return (
                               <div key={index} className="exercise-bar-item">
-                                <div className="exercise-bar-label" title={exercise.name}>
-                                  {exercise.name}
-                                </div>
+                                <div className="exercise-bar-label" title={exercise.name}>{exercise.name}</div>
                                 <div className="exercise-bar-container">
-                                  <div 
-                                    className="exercise-bar-fill" 
-                                    style={{ width: `${Math.max(percentage, 15)}%` }}
-                                  >
+                                  <div className="exercise-bar-fill" style={{ width: `${Math.max(percentage, 15)}%` }}>
                                     <span className="exercise-bar-value">{displayValue}</span>
                                   </div>
                                 </div>
-                                <div className="exercise-bar-count">
-                                  {exercise.workoutCount}x
-                                </div>
+                                <div className="exercise-bar-count">{exercise.workoutCount}x</div>
                               </div>
                             );
                           });
                         })()}
                       </div>
                       {getExerciseProgressData().length > 8 && (
-                        <div style={{ 
-                          fontSize: '11px', 
-                          opacity: '0.6', 
-                          marginTop: '10px',
-                          textAlign: 'center'
-                        }}>
-                          Showing top 8 exercises
-                        </div>
+                        <div style={{ fontSize: '11px', opacity: '0.6', marginTop: '10px', textAlign: 'center' }}>Showing top 8 exercises</div>
                       )}
                     </div>
                   </>
@@ -1782,13 +1464,9 @@
 
                 {workoutHistory.length === 0 ? (
                   <div className="empty-state">
-                    <div className="empty-state-icon">
-                      <Dumbbell size={64} opacity={0.3} />
-                    </div>
+                    <div className="empty-state-icon"><Dumbbell size={64} opacity={0.3} /></div>
                     <p>No workouts yet</p>
-                    <p style={{ fontSize: '14px', marginTop: '10px' }}>
-                      Tap "Start Workout" to begin
-                    </p>
+                    <p style={{ fontSize: '14px', marginTop: '10px' }}>Tap "Start Workout" to begin</p>
                   </div>
                 ) : (
                   (() => {
@@ -1798,68 +1476,34 @@
                       const isExpanded = expandedGroups[muscleGroup];
                       const latestWorkout = workouts[0];
                       const totalVolume = workouts.reduce((sum, w) => sum + getTotalVolume(w), 0);
-                      
                       return (
                         <div key={muscleGroup} className="muscle-group-stack">
-                          <div 
+                          <div
                             className={`muscle-group-header ${workouts.length > 1 ? 'has-stack' : ''}`}
                             onClick={() => workouts.length > 1 ? toggleGroup(muscleGroup) : viewWorkout(latestWorkout)}
                           >
                             <div className="muscle-group-title-row">
                               <div className="muscle-group-name">
                                 {muscleGroup}
-                                {workouts.length > 1 && (
-                                  <span className="workout-count-badge">
-                                    {workouts.length} workouts
-                                  </span>
-                                )}
+                                {workouts.length > 1 && <span className="workout-count-badge">{workouts.length} workouts</span>}
                               </div>
                               {workouts.length > 1 ? (
-                                <div className={`expand-icon ${isExpanded ? 'expanded' : ''}`}>
-                                  <ChevronDown size={20} />
-                                </div>
+                                <div className={`expand-icon ${isExpanded ? 'expanded' : ''}`}><ChevronDown size={20} /></div>
                               ) : (
-                                <button 
-                                  className="view-workout-btn"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    viewWorkout(latestWorkout);
-                                  }}
-                                >
-                                  <Eye size={14} />
-                                  View
+                                <button className="view-workout-btn" onClick={(e) => { e.stopPropagation(); viewWorkout(latestWorkout); }}>
+                                  <Eye size={14} /> View
                                 </button>
                               )}
                             </div>
-                            
+
                             {!isExpanded && (
                               <>
-                                <div className="workout-date" style={{ marginTop: '8px' }}>
-                                  <Calendar size={14} />
-                                  Latest: {formatDate(latestWorkout.date)}
-                                </div>
-                                
+                                <div className="workout-date" style={{ marginTop: '8px' }}><Calendar size={14} /> Latest: {formatDate(latestWorkout.date)}</div>
                                 <div className="workout-stats" style={{ marginTop: '12px', paddingTop: '12px' }}>
-                                  <div className="stat">
-                                    <div className="stat-label">Total Volume</div>
-                                    <div className="stat-value" style={{ fontSize: '18px' }}>
-                                      {totalVolume.toLocaleString()}
-                                    </div>
-                                  </div>
-                                  <div className="stat">
-                                    <div className="stat-label">Avg per Workout</div>
-                                    <div className="stat-value" style={{ fontSize: '18px' }}>
-                                      {Math.round(totalVolume / workouts.length).toLocaleString()}
-                                    </div>
-                                  </div>
-                                  <div className="stat">
-                                    <div className="stat-label">Best Volume</div>
-                                    <div className="stat-value" style={{ fontSize: '18px' }}>
-                                      {Math.max(...workouts.map(w => getTotalVolume(w))).toLocaleString()}
-                                    </div>
-                                  </div>
+                                  <div className="stat"><div className="stat-label">Total Volume</div><div className="stat-value" style={{ fontSize: '18px' }}>{totalVolume.toLocaleString()}</div></div>
+                                  <div className="stat"><div className="stat-label">Avg per Workout</div><div className="stat-value" style={{ fontSize: '18px' }}>{Math.round(totalVolume / workouts.length).toLocaleString()}</div></div>
+                                  <div className="stat"><div className="stat-label">Best Volume</div><div className="stat-value" style={{ fontSize: '18px' }}>{Math.max(...workouts.map(w => getTotalVolume(w))).toLocaleString()}</div></div>
                                 </div>
-
                                 <div className="group-summary">
                                   Last exercise: {latestWorkout.exercises.map(ex => ex.name).slice(0, 3).join(' • ')}
                                   {latestWorkout.exercises.length > 3 && ` + ${latestWorkout.exercises.length - 3} more`}
@@ -1872,35 +1516,14 @@
                                 {workouts.map((workout, index) => {
                                   const workoutGlobalIndex = workoutHistory.findIndex(w => w === workout);
                                   return (
-                                    <div 
-                                      key={index} 
-                                      className="individual-workout"
-                                      onClick={() => viewWorkout(workout)}
-                                    >
+                                    <div key={index} className="individual-workout" onClick={() => viewWorkout(workout)}>
                                       <div className="workout-mini-header">
-                                        <div>
-                                          <div className="workout-date">
-                                            <Calendar size={14} />
-                                            {formatDate(workout.date)}
-                                          </div>
-                                        </div>
+                                        <div className="workout-date"><Calendar size={14} />{formatDate(workout.date)}</div>
                                         <div style={{ display: 'flex', gap: '8px' }}>
-                                          <button 
-                                            className="view-workout-btn"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              viewWorkout(workout);
-                                            }}
-                                          >
-                                            <Eye size={14} />
-                                            View
-                                          </button>
-                                          <button 
+                                          <button className="view-workout-btn" onClick={(e) => { e.stopPropagation(); viewWorkout(workout); }}><Eye size={14} /> View</button>
+                                          <button
                                             className={`delete-workout-btn ${deleteConfirmIndex === workoutGlobalIndex ? 'confirm' : ''}`}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              handleDeleteClick(workoutGlobalIndex);
-                                            }}
+                                            onClick={(e) => { e.stopPropagation(); handleDeleteClick(workoutGlobalIndex); }}
                                             onBlur={() => setDeleteConfirmIndex(null)}
                                           >
                                             <Trash2 size={14} />
@@ -1908,33 +1531,14 @@
                                           </button>
                                         </div>
                                       </div>
-
                                       <div className="workout-stats">
-                                        <div className="stat">
-                                          <div className="stat-label">Exercises</div>
-                                          <div className="stat-value" style={{ fontSize: '16px' }}>
-                                            {getFilledExercisesCount(workout)}
-                                          </div>
-                                        </div>
-                                        <div className="stat">
-                                          <div className="stat-label">Sets</div>
-                                          <div className="stat-value" style={{ fontSize: '16px' }}>
-                                            {getFilledSetsCount(workout)}
-                                          </div>
-                                        </div>
-                                        <div className="stat">
-                                          <div className="stat-label">Volume</div>
-                                          <div className="stat-value" style={{ fontSize: '16px' }}>
-                                            {getTotalVolume(workout).toLocaleString()}
-                                          </div>
-                                        </div>
+                                        <div className="stat"><div className="stat-label">Exercises</div><div className="stat-value" style={{ fontSize: '16px' }}>{getFilledExercisesCount(workout)}</div></div>
+                                        <div className="stat"><div className="stat-label">Sets</div><div className="stat-value" style={{ fontSize: '16px' }}>{getFilledSetsCount(workout)}</div></div>
+                                        <div className="stat"><div className="stat-label">Volume</div><div className="stat-value" style={{ fontSize: '16px' }}>{getTotalVolume(workout).toLocaleString()}</div></div>
                                       </div>
-
                                       <div className="exercise-summary" style={{ marginTop: '10px' }}>
-                                        {workout.exercises.filter(ex => ex.sets.some(s => s.weight > 0 || s.reps > 0))
-                                          .map(ex => ex.name).slice(0, 3).join(' • ')}
-                                        {workout.exercises.filter(ex => ex.sets.some(s => s.weight > 0 || s.reps > 0)).length > 3 && 
-                                          ` + ${workout.exercises.filter(ex => ex.sets.some(s => s.weight > 0 || s.reps > 0)).length - 3} more`}
+                                        {workout.exercises.filter(ex => ex.sets.some(s => s.weight > 0 || s.reps > 0)).map(ex => ex.name).slice(0, 3).join(' • ')}
+                                        {workout.exercises.filter(ex => ex.sets.some(s => s.weight > 0 || s.reps > 0)).length > 3 && ` + ${workout.exercises.filter(ex => ex.sets.some(s => s.weight > 0 || s.reps > 0)).length - 3} more`}
                                       </div>
                                     </div>
                                   );
@@ -1951,69 +1555,38 @@
 
               {showGroupSelect && (
                 <div className="muscle-group-modal">
-                  <div className="modal-header">
-                    <h2>Select Muscle Group</h2>
-                  </div>
-                  
-                  {/* Stopwatch */}
-                  <div className="stopwatch-container">
-                    <div className="stopwatch-time">{formatStopwatchTime(stopwatchTime)}</div>
-                    <div className="stopwatch-controls">
-                      {!stopwatchRunning ? (
-                        <button className="stopwatch-btn play" onClick={startStopwatch}>
-                          ▶
-                        </button>
-                      ) : (
-                        <button className="stopwatch-btn pause" onClick={stopStopwatch}>
-                          ⏸
-                        </button>
-                      )}
-                      <button className="stopwatch-btn reset" onClick={resetStopwatch}>
-                        ↻
-                      </button>
-                    </div>
-                  </div>
-                  
+                  <div className="modal-header"><h2>Select Muscle Group</h2></div>
+                  <StopwatchWidget />
                   <div className="muscle-groups">
                     {Object.keys(MUSCLE_GROUPS).map(group => (
-                      <button
-                        key={group}
-                        className="muscle-group-btn"
-                        onClick={() => startWorkout(group)}
-                      >
-                        {group}
-                        <ChevronDown size={20} />
+                      <button key={group} className="muscle-group-btn" onClick={() => startWorkout(group)}>
+                        {group} <ChevronDown size={20} />
                       </button>
                     ))}
                   </div>
-                  <button className="close-modal-btn" onClick={() => setShowGroupSelect(false)}>
-                    Cancel
-                  </button>
+                  <button className="close-modal-btn" onClick={() => setShowGroupSelect(false)}>Cancel</button>
                 </div>
               )}
             </>
-          ) : page === 'detail' ? (
+          )}
+
+          {/* ══════════════════════════════════════════
+              DETAIL PAGE
+          ══════════════════════════════════════════ */}
+          {page === 'detail' && (
             <div className="detail-page">
               <div className="workout-header">
-                <button className="back-btn" onClick={() => {
-                  setPage('history');
-                  setViewingWorkout(null);
-                }}>
+                <button className="back-btn" onClick={() => { setPage('history'); setViewingWorkout(null); }}>
                   <ChevronLeft size={24} />
                 </button>
                 <h2>{viewingWorkout?.muscleGroup}</h2>
-                <button 
+                <button
                   className="delete-workout-btn"
                   style={{ marginLeft: 'auto' }}
                   onClick={() => {
                     const index = workoutHistory.findIndex(w => w === viewingWorkout);
-                    if (deleteConfirmIndex === index) {
-                      deleteWorkout(index);
-                      setPage('history');
-                      setViewingWorkout(null);
-                    } else {
-                      setDeleteConfirmIndex(index);
-                    }
+                    if (deleteConfirmIndex === index) { deleteWorkout(index); setPage('history'); setViewingWorkout(null); }
+                    else setDeleteConfirmIndex(index);
                   }}
                   onBlur={() => setDeleteConfirmIndex(null)}
                 >
@@ -2024,21 +1597,10 @@
 
               <div className="exercises-list">
                 <div style={{ marginBottom: '20px' }}>
-                  <div className="workout-date" style={{ fontSize: '14px', opacity: '0.7' }}>
-                    <Calendar size={16} />
-                    {formatDate(viewingWorkout?.date)}
-                  </div>
+                  <div className="workout-date" style={{ fontSize: '14px', opacity: '0.7' }}><Calendar size={16} />{formatDate(viewingWorkout?.date)}</div>
                   <div className="workout-stats" style={{ marginTop: '15px' }}>
-                    <div className="stat">
-                      <div className="stat-label">Exercises</div>
-                      <div className="stat-value">{getFilledExercisesCount(viewingWorkout)}</div>
-                    </div>
-                    <div className="stat">
-                      <div className="stat-label">Total Sets</div>
-                      <div className="stat-value">
-                        {getFilledSetsCount(viewingWorkout)}
-                      </div>
-                    </div>
+                    <div className="stat"><div className="stat-label">Exercises</div><div className="stat-value">{getFilledExercisesCount(viewingWorkout)}</div></div>
+                    <div className="stat"><div className="stat-label">Total Sets</div><div className="stat-value">{getFilledSetsCount(viewingWorkout)}</div></div>
                     <div className="stat">
                       <div className="stat-label">Volume</div>
                       <div className="stat-value">
@@ -2047,11 +1609,7 @@
                           const comparison = compareWithPrevious(viewingWorkout);
                           if (comparison && comparison.volumeDiff !== 0) {
                             const isUp = comparison.volumeDiff > 0;
-                            return (
-                              <span className={`progress-indicator ${isUp ? 'up' : 'down'}`}>
-                                {isUp ? '↑' : '↓'} {Math.abs(comparison.volumePercent).toFixed(1)}%
-                              </span>
-                            );
+                            return <span className={`progress-indicator ${isUp ? 'up' : 'down'}`}>{isUp ? '↑' : '↓'} {Math.abs(comparison.volumePercent).toFixed(1)}%</span>;
                           }
                           return null;
                         })()}
@@ -2062,15 +1620,11 @@
 
                 {(() => {
                   const comparison = compareWithPrevious(viewingWorkout);
-                  if (comparison && comparison.previous) {
+                  if (comparison?.previous) {
                     return (
                       <div className="previous-workout-section">
-                        <div className="previous-workout-title">
-                          vs. {formatDate(comparison.previous.date)}
-                        </div>
-                        <div style={{ fontSize: '13px', opacity: '0.8' }}>
-                          Previous Volume: {getTotalVolume(comparison.previous).toLocaleString()} lbs
-                        </div>
+                        <div className="previous-workout-title">vs. {formatDate(comparison.previous.date)}</div>
+                        <div style={{ fontSize: '13px', opacity: '0.8' }}>Previous Volume: {getTotalVolume(comparison.previous).toLocaleString()} lbs</div>
                       </div>
                     );
                   }
@@ -2080,101 +1634,70 @@
                 {viewingWorkout?.exercises
                   .filter(exercise => exercise.sets.some(set => set.weight > 0 || set.reps > 0))
                   .map((exercise, exIndex) => {
-                  const pr = getExercisePR(exercise.name, viewingWorkout.muscleGroup);
-                  const maxSetWeight = Math.max(...exercise.sets.map(s => s.weight));
-                  const isPR = maxSetWeight > 0 && maxSetWeight >= pr.maxWeight && pr.maxWeight > 0;
-                  
-                  // Find previous workout with this exercise
-                  const previousWorkouts = workoutHistory
-                    .filter(w => w.muscleGroup === viewingWorkout.muscleGroup && w.date !== viewingWorkout.date)
-                    .sort((a, b) => new Date(b.date) - new Date(a.date));
-                  const previousExercise = previousWorkouts[0]?.exercises.find(e => e.name === exercise.name);
-                  
-                  return (
-                    <div key={exIndex} className={`exercise-card ${exercise.completed ? 'completed' : ''}`}>
-                      <div className="exercise-header">
-                        <div className="exercise-name">
-                          {exercise.name}
-                          {isPR && (
-                            <span className="pr-badge">
-                              ⭐ PR
-                            </span>
-                          )}
+                    const pr = getExercisePR(exercise.name, viewingWorkout.muscleGroup);
+                    const maxSetWeight = Math.max(...exercise.sets.map(s => s.weight));
+                    const isPR = maxSetWeight > 0 && maxSetWeight >= pr.maxWeight && pr.maxWeight > 0;
+                    const previousWorkouts = workoutHistory
+                      .filter(w => w.muscleGroup === viewingWorkout.muscleGroup && w.date !== viewingWorkout.date)
+                      .sort((a, b) => new Date(b.date) - new Date(a.date));
+                    const previousExercise = previousWorkouts[0]?.exercises.find(e => e.name === exercise.name);
+                    return (
+                      <div key={exIndex} className={`exercise-card ${exercise.completed ? 'completed' : ''}`}>
+                        <div className="exercise-header">
+                          <div className="exercise-name">
+                            {exercise.name}
+                            {isPR && <span className="pr-badge">⭐ PR</span>}
+                          </div>
+                        </div>
+                        <div className="sets-list">
+                          {exercise.sets.map((set, setIndex) => {
+                            const prevSet = previousExercise?.sets[setIndex];
+                            const weightImproved = prevSet && set.weight > prevSet.weight;
+                            const repsImproved = prevSet && set.weight === prevSet.weight && set.reps > prevSet.reps;
+                            return (
+                              <div key={setIndex}>
+                                <div className="set-row readonly">
+                                  <div className="set-number">{setIndex + 1}</div>
+                                  <div className="set-input-group">
+                                    <div className="set-input-label">Weight (lbs)</div>
+                                    <div className="set-value">{set.weight || 0}{weightImproved && <span style={{ color: '#4ade80', marginLeft: '4px' }}>↑</span>}</div>
+                                  </div>
+                                  <div className="set-input-group">
+                                    <div className="set-input-label">Reps</div>
+                                    <div className="set-value">{set.reps || 0}{repsImproved && <span style={{ color: '#4ade80', marginLeft: '4px' }}>↑</span>}</div>
+                                  </div>
+                                </div>
+                                {prevSet && (
+                                  <div className={`set-comparison ${(weightImproved || repsImproved) ? 'improved' : ''}`}>
+                                    Previous: {prevSet.weight}lbs × {prevSet.reps} reps
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
-
-                      <div className="sets-list">
-                        {exercise.sets.map((set, setIndex) => {
-                          const prevSet = previousExercise?.sets[setIndex];
-                          const weightImproved = prevSet && set.weight > prevSet.weight;
-                          const repsImproved = prevSet && set.weight === prevSet.weight && set.reps > prevSet.reps;
-                          
-                          return (
-                            <div key={setIndex}>
-                              <div className="set-row readonly">
-                                <div className="set-number">{setIndex + 1}</div>
-                                <div className="set-input-group">
-                                  <div className="set-input-label">Weight (lbs)</div>
-                                  <div className="set-value">
-                                    {set.weight || 0}
-                                    {weightImproved && <span style={{ color: '#4ade80', marginLeft: '4px' }}>↑</span>}
-                                  </div>
-                                </div>
-                                <div className="set-input-group">
-                                  <div className="set-input-label">Reps</div>
-                                  <div className="set-value">
-                                    {set.reps || 0}
-                                    {repsImproved && <span style={{ color: '#4ade80', marginLeft: '4px' }}>↑</span>}
-                                  </div>
-                                </div>
-                              </div>
-                              {prevSet && (
-                                <div className={`set-comparison ${(weightImproved || repsImproved) ? 'improved' : ''}`}>
-                                  Previous: {prevSet.weight}lbs × {prevSet.reps} reps
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
               </div>
             </div>
-          ) : (
-            <div className="workout-page">
-              <div className="workout-header">
-                <button className="back-btn" onClick={() => {
-                  setPage('history');
-                  setCurrentWorkout(null);
-                  setExercises([]);
-                }}>
-                  <ChevronLeft size={24} />
-                </button>
-                <h2>{currentWorkout?.muscleGroup}</h2>
-                <button className="plate-calc-btn" onClick={() => setShowPlateCalculator(true)}>
-                  Plates
-                </button>
-              </div>
+          )}
 
-              {/* Stopwatch */}
-              <div className="stopwatch-container">
-                <div className="stopwatch-time">{formatStopwatchTime(stopwatchTime)}</div>
-                <div className="stopwatch-controls">
-                  {!stopwatchRunning ? (
-                    <button className="stopwatch-btn play" onClick={startStopwatch}>
-                      ▶
-                    </button>
-                  ) : (
-                    <button className="stopwatch-btn pause" onClick={stopStopwatch}>
-                      ⏸
-                    </button>
-                  )}
-                  <button className="stopwatch-btn reset" onClick={resetStopwatch}>
-                    ↻
+          {/* ══════════════════════════════════════════
+              ACTIVE WORKOUT PAGE
+          ══════════════════════════════════════════ */}
+          {page === 'workout' && (
+            <div className="workout-page">
+              {/* Sticky top bar: workout header + timer */}
+              <div className="sticky-top">
+                <div className="workout-header">
+                  <button className="back-btn" onClick={() => { setPage('history'); setCurrentWorkout(null); setExercises([]); }}>
+                    <ChevronLeft size={24} />
                   </button>
+                  <h2>{currentWorkout?.muscleGroup}</h2>
+                  <button className="plate-calc-btn" onClick={() => setShowPlateCalculator(true)}>Plates</button>
                 </div>
+                <StopwatchWidget />
               </div>
 
               <div className="exercises-list">
@@ -2182,31 +1705,49 @@
                   const pr = getExercisePR(exercise.name, currentWorkout.muscleGroup);
                   const maxSetWeight = Math.max(...exercise.sets.map(s => s.weight), 0);
                   const isPR = maxSetWeight > 0 && maxSetWeight >= pr.maxWeight && pr.maxWeight > 0;
-                  
-                  // Find previous workout with this exercise
                   const previousWorkouts = workoutHistory
                     .filter(w => w.muscleGroup === currentWorkout.muscleGroup)
                     .sort((a, b) => new Date(b.date) - new Date(a.date));
                   const previousExercise = previousWorkouts[0]?.exercises.find(e => e.name === exercise.name);
-                  
+
                   return (
                     <div key={exIndex} className={`exercise-card ${exercise.completed ? 'completed' : ''}`}>
                       <div className="exercise-header">
                         <div className="exercise-name">
                           {exercise.name}
-                          {isPR && (
-                            <span className="pr-badge">
-                              ⭐ NEW PR!
-                            </span>
-                          )}
+                          {isPR && <span className="pr-badge">⭐ NEW PR!</span>}
                         </div>
-                        <div className="exercise-actions">
-                          <button 
-                            className="exercise-plate-btn" 
-                            onClick={() => setActiveExerciseCalc(exIndex)}
+
+                        {/* Controls: reorder ↑↓ | delete | plates | done ✓ */}
+                        <div className="exercise-controls">
+                          <button
+                            className="reorder-btn"
+                            onClick={() => moveExercise(exIndex, -1)}
+                            disabled={exIndex === 0}
+                            title="Move up"
                           >
-                            Plates
+                            <ChevronUp size={14} />
                           </button>
+                          <button
+                            className="reorder-btn"
+                            onClick={() => moveExercise(exIndex, 1)}
+                            disabled={exIndex === exercises.length - 1}
+                            title="Move down"
+                          >
+                            <ChevronDown size={14} />
+                          </button>
+                          <button
+                            className={`exercise-delete-btn ${deleteExerciseConfirm === exIndex ? 'confirm' : ''}`}
+                            onClick={() => {
+                              if (deleteExerciseConfirm === exIndex) deleteExercise(exIndex);
+                              else setDeleteExerciseConfirm(exIndex);
+                            }}
+                            onBlur={() => setDeleteExerciseConfirm(null)}
+                            title="Delete exercise"
+                          >
+                            {deleteExerciseConfirm === exIndex ? '✓ Delete?' : <Trash2 size={13} />}
+                          </button>
+                          <button className="exercise-plate-btn" onClick={() => setActiveExerciseCalc(exIndex)}>Plates</button>
                           <div
                             className={`complete-checkbox ${exercise.completed ? 'checked' : ''}`}
                             onClick={() => toggleExerciseComplete(exIndex)}
@@ -2218,9 +1759,7 @@
 
                       {previousExercise && (
                         <div style={{ fontSize: '11px', opacity: '0.6', marginBottom: '10px' }}>
-                          Last workout: {previousExercise.sets.map((s, i) => 
-                            `${s.weight}×${s.reps}`
-                          ).join(', ')}
+                          Last workout: {previousExercise.sets.map(s => `${s.weight}×${s.reps}`).join(', ')}
                         </div>
                       )}
 
@@ -2230,7 +1769,6 @@
                           const weightImproved = prevSet && set.weight > prevSet.weight;
                           const repsImproved = prevSet && set.weight === prevSet.weight && set.reps > prevSet.reps;
                           const showImprovement = (weightImproved || repsImproved) && set.weight > 0 && set.reps > 0;
-                          
                           return (
                             <div key={setIndex}>
                               <div className="set-row">
@@ -2246,10 +1784,7 @@
                                     value={set.weight || ''}
                                     onChange={(e) => updateSet(exIndex, setIndex, 'weight', e.target.value)}
                                     placeholder="0"
-                                    style={weightImproved && set.weight > 0 ? {
-                                      borderColor: '#4ade80',
-                                      background: 'rgba(74, 222, 128, 0.1)'
-                                    } : {}}
+                                    style={weightImproved && set.weight > 0 ? { borderColor: '#4ade80', background: 'rgba(74, 222, 128, 0.1)' } : {}}
                                   />
                                 </div>
                                 <div className="set-input-group">
@@ -2260,19 +1795,11 @@
                                     value={set.reps || ''}
                                     onChange={(e) => updateSet(exIndex, setIndex, 'reps', e.target.value)}
                                     placeholder="0"
-                                    style={repsImproved && set.reps > 0 ? {
-                                      borderColor: '#4ade80',
-                                      background: 'rgba(74, 222, 128, 0.1)'
-                                    } : {}}
+                                    style={repsImproved && set.reps > 0 ? { borderColor: '#4ade80', background: 'rgba(74, 222, 128, 0.1)' } : {}}
                                   />
                                 </div>
                                 {exercise.sets.length > 1 && (
-                                  <button
-                                    className="remove-set-btn"
-                                    onClick={() => removeSet(exIndex, setIndex)}
-                                  >
-                                    ×
-                                  </button>
+                                  <button className="remove-set-btn" onClick={() => removeSet(exIndex, setIndex)}>×</button>
                                 )}
                               </div>
                             </div>
@@ -2281,8 +1808,7 @@
                       </div>
 
                       <button className="add-set-btn" onClick={() => addSet(exIndex)}>
-                        <Plus size={16} />
-                        Add Set
+                        <Plus size={16} /> Add Set
                       </button>
                     </div>
                   );
@@ -2291,81 +1817,43 @@
 
               <div className="add-exercise-section">
                 <button className="add-exercise-btn" onClick={() => setShowAddExercise(true)}>
-                  <Plus size={20} />
-                  Add Custom Exercise
+                  <Plus size={20} /> Add Custom Exercise
                 </button>
               </div>
 
               <button className="finish-workout-btn" onClick={finishWorkout}>
-                <Check size={24} />
-                Finish Workout
+                <Check size={24} /> Finish Workout
               </button>
 
+              {/* Per-exercise plate calculator */}
               {activeExerciseCalc !== null && (
-                <div className="calculator-modal" onClick={() => {
-                  setActiveExerciseCalc(null);
-                  setExercisePlates45('');
-                }}>
+                <div className="calculator-modal" onClick={() => { setActiveExerciseCalc(null); setExercisePlates45(''); }}>
                   <div className="calculator-content" onClick={(e) => e.stopPropagation()}>
                     <div className="calculator-title">{exercises[activeExerciseCalc]?.name}</div>
-                    
-                    <div>
-                      <div className="result-label" style={{ marginBottom: '10px' }}>45lb Plates per side → Add set</div>
-                      <input
-                        type="number"
-                        className="calculator-input"
-                        value={exercisePlates45}
-                        onChange={(e) => setExercisePlates45(e.target.value)}
-                        placeholder="# of 45lb plates per side"
-                      />
-                      {exercisePlates45 && (
-                        <div className="calculator-result">
-                          <div className="result-label">Total weight</div>
-                          <div className="result-value">{calculateWeightFrom45s(parseFloat(exercisePlates45))} lbs</div>
-                        </div>
-                      )}
-                    </div>
-
+                    <div className="result-label" style={{ marginBottom: '10px' }}>45lb Plates per side → Add set</div>
+                    <input type="number" className="calculator-input" value={exercisePlates45} onChange={(e) => setExercisePlates45(e.target.value)} placeholder="# of 45lb plates per side" />
+                    {exercisePlates45 && (
+                      <div className="calculator-result">
+                        <div className="result-label">Total weight</div>
+                        <div className="result-value">{calculateWeightFrom45s(parseFloat(exercisePlates45))} lbs</div>
+                      </div>
+                    )}
                     <div className="modal-btn-group" style={{ marginTop: '20px' }}>
-                      <button 
-                        className="modal-btn-primary" 
-                        onClick={() => applyPlatesWeightToExercise(activeExerciseCalc)}
-                        disabled={!exercisePlates45}
-                      >
-                        Add Set with Weight
-                      </button>
-                      <button 
-                        className="modal-btn-secondary" 
-                        onClick={() => {
-                          setActiveExerciseCalc(null);
-                          setExercisePlates45('');
-                        }}
-                      >
-                        Cancel
-                      </button>
+                      <button className="modal-btn-primary" onClick={() => applyPlatesWeightToExercise(activeExerciseCalc)} disabled={!exercisePlates45}>Add Set with Weight</button>
+                      <button className="modal-btn-secondary" onClick={() => { setActiveExerciseCalc(null); setExercisePlates45(''); }}>Cancel</button>
                     </div>
                   </div>
                 </div>
               )}
 
+              {/* Global plate calculator */}
               {showPlateCalculator && (
-                <div className="calculator-modal" onClick={() => {
-                  setShowPlateCalculator(false);
-                  setPlateWeight('');
-                  setNumPlates45('');
-                }}>
+                <div className="calculator-modal" onClick={() => { setShowPlateCalculator(false); setPlateWeight(''); setNumPlates45(''); }}>
                   <div className="calculator-content" onClick={(e) => e.stopPropagation()}>
                     <div className="calculator-title">Plate Calculator</div>
-                    
                     <div style={{ marginBottom: '30px' }}>
                       <div className="result-label" style={{ marginBottom: '10px' }}>Weight → Plates per side</div>
-                      <input
-                        type="number"
-                        className="calculator-input"
-                        value={plateWeight}
-                        onChange={(e) => setPlateWeight(e.target.value)}
-                        placeholder="Enter total weight (lbs)"
-                      />
+                      <input type="number" className="calculator-input" value={plateWeight} onChange={(e) => setPlateWeight(e.target.value)} placeholder="Enter total weight (lbs)" />
                       {plateWeight && (
                         <div className="calculator-result">
                           <div className="result-label">Plates per side</div>
@@ -2373,16 +1861,9 @@
                         </div>
                       )}
                     </div>
-
                     <div>
                       <div className="result-label" style={{ marginBottom: '10px' }}>45lb Plates → Total weight</div>
-                      <input
-                        type="number"
-                        className="calculator-input"
-                        value={numPlates45}
-                        onChange={(e) => setNumPlates45(e.target.value)}
-                        placeholder="# of 45lb plates per side"
-                      />
+                      <input type="number" className="calculator-input" value={numPlates45} onChange={(e) => setNumPlates45(e.target.value)} placeholder="# of 45lb plates per side" />
                       {numPlates45 && (
                         <div className="calculator-result">
                           <div className="result-label">Total weight</div>
@@ -2390,42 +1871,20 @@
                         </div>
                       )}
                     </div>
-
-                    <button className="modal-btn" onClick={() => {
-                      setShowPlateCalculator(false);
-                      setPlateWeight('');
-                      setNumPlates45('');
-                    }}>
-                      Close
-                    </button>
+                    <button className="modal-btn" onClick={() => { setShowPlateCalculator(false); setPlateWeight(''); setNumPlates45(''); }}>Close</button>
                   </div>
                 </div>
               )}
 
+              {/* Add custom exercise */}
               {showAddExercise && (
                 <div className="add-exercise-modal" onClick={() => setShowAddExercise(false)}>
                   <div className="add-exercise-content" onClick={(e) => e.stopPropagation()}>
                     <div className="add-exercise-title">Add Custom Exercise</div>
-                    
-                    <input
-                      type="text"
-                      className="exercise-input"
-                      value={newExerciseName}
-                      onChange={(e) => setNewExerciseName(e.target.value)}
-                      placeholder="Exercise name"
-                      onKeyPress={(e) => e.key === 'Enter' && addCustomExercise()}
-                    />
-
+                    <input type="text" className="exercise-input" value={newExerciseName} onChange={(e) => setNewExerciseName(e.target.value)} placeholder="Exercise name" onKeyPress={(e) => e.key === 'Enter' && addCustomExercise()} />
                     <div className="modal-btn-group">
-                      <button className="modal-btn-primary" onClick={addCustomExercise}>
-                        Add Exercise
-                      </button>
-                      <button className="modal-btn-secondary" onClick={() => {
-                        setShowAddExercise(false);
-                        setNewExerciseName('');
-                      }}>
-                        Cancel
-                      </button>
+                      <button className="modal-btn-primary" onClick={addCustomExercise}>Add Exercise</button>
+                      <button className="modal-btn-secondary" onClick={() => { setShowAddExercise(false); setNewExerciseName(''); }}>Cancel</button>
                     </div>
                   </div>
                 </div>
