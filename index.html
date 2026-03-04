@@ -99,8 +99,6 @@
       'Biceps': ['Barbell Curls', 'Hammer Curls', 'Preacher Curls', 'Cable Curls', 'Concentration Curls'],
       'Triceps': ['Close Grip Bench', 'Tricep Dips', 'Overhead Extension', 'Pushdowns', 'Skull Crushers'],
       'Core': ['Planks', 'Hanging Leg Raises', 'Cable Crunches', 'Russian Twists', 'Ab Wheel'],
-      'Quads': ['Front Squats', 'Leg Extensions', 'Bulgarian Split Squats', 'Hack Squats', 'Lunges'],
-      'Hamstrings': ['Romanian Deadlift', 'Leg Curls', 'Good Mornings', 'Nordic Curls', 'Glute Ham Raise'],
       'Glutes': ['Hip Thrusts', 'Bulgarian Split Squats', 'Glute Kickbacks', 'Cable Pull-throughs', 'Sumo Deadlift']
     };
 
@@ -216,20 +214,40 @@
       const [exercisePlates45, setExercisePlates45] = useState('');
       const [deleteConfirmIndex, setDeleteConfirmIndex] = useState(null);
       const [deleteExerciseConfirm, setDeleteExerciseConfirm] = useState(null);
+      const deleteConfirmTimer = React.useRef(null);
+      const deleteExerciseTimer = React.useRef(null);
+
+      const armDeleteWorkout = (index) => {
+        clearTimeout(deleteConfirmTimer.current);
+        setDeleteConfirmIndex(index);
+        if (index !== null) deleteConfirmTimer.current = setTimeout(() => setDeleteConfirmIndex(null), 2000);
+      };
+
+      const armDeleteExercise = (index) => {
+        clearTimeout(deleteExerciseTimer.current);
+        setDeleteExerciseConfirm(index);
+        if (index !== null) deleteExerciseTimer.current = setTimeout(() => setDeleteExerciseConfirm(null), 2000);
+      };
       const [viewingWorkout, setViewingWorkout] = useState(null);
       const [expandedGroups, setExpandedGroups] = useState({});
       const [showBackupModal, setShowBackupModal] = useState(false);
       const [importStatus, setImportStatus] = useState(null);
+      const [cardioLog, setCardioLog] = useState([]);
+      const [showCardioModal, setShowCardioModal] = useState(false);
+      const [cardioMinutes, setCardioMinutes] = useState('');
+      const [cardioType, setCardioType] = useState('Cardio');
 
       useEffect(() => {
         const saved = localStorage.getItem('workoutHistory');
         if (saved) setWorkoutHistory(JSON.parse(saved));
         const savedCustom = localStorage.getItem('customExercises');
         if (savedCustom) setCustomExercises(JSON.parse(savedCustom));
+        const savedCardio = localStorage.getItem('cardioLog');
+        if (savedCardio) setCardioLog(JSON.parse(savedCardio));
       }, []);
 
       const exportData = () => {
-        const data = { exportedAt: new Date().toISOString(), version: 1, workoutHistory, customExercises };
+        const data = { exportedAt: new Date().toISOString(), version: 1, workoutHistory, customExercises, cardioLog };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -256,6 +274,10 @@
             }
             setImportStatus('success');
             setTimeout(() => { setImportStatus(null); setShowBackupModal(false); }, 2000);
+            if (data.cardioLog) {
+              setCardioLog(data.cardioLog);
+              localStorage.setItem('cardioLog', JSON.stringify(data.cardioLog));
+            }
           } catch {
             setImportStatus('error');
             setTimeout(() => setImportStatus(null), 3000);
@@ -273,6 +295,19 @@
         if (Object.keys(customExercises).length > 0) localStorage.setItem('customExercises', JSON.stringify(customExercises));
       }, [customExercises]);
 
+      useEffect(() => {
+        localStorage.setItem('cardioLog', JSON.stringify(cardioLog));
+      }, [cardioLog]);
+
+      const logCardio = () => {
+        const mins = parseFloat(cardioMinutes);
+        if (!mins || mins <= 0) return;
+        setCardioLog(prev => [{ date: new Date().toISOString(), minutes: mins, type: cardioType || 'Cardio' }, ...prev]);
+        setCardioMinutes('');
+        setCardioType('Cardio');
+        setShowCardioModal(false);
+      };
+
       const startWorkout = (muscleGroup) => {
         const defaultExercises = MUSCLE_GROUPS[muscleGroup] || [];
         const customExercisesForGroup = customExercises[muscleGroup] || [];
@@ -280,8 +315,8 @@
         const lastWorkout = workoutHistory.filter(w => w.muscleGroup === muscleGroup).sort((a, b) => new Date(b.date) - new Date(a.date))[0];
         const initialExercises = groupExercises.map(name => {
           const lastExercise = lastWorkout?.exercises.find(e => e.name === name);
-          const copiedSets = lastExercise?.sets ? lastExercise.sets.map(set => ({ weight: set.weight, reps: set.reps })) : [{ weight: 0, reps: 0 }];
-          return { name, sets: copiedSets, completed: false };
+          const copiedSets = lastExercise?.sets ? lastExercise.sets.map(set => ({ weight: set.weight, reps: set.reps, linked: (set.linked || []).map(l => ({...l})) })) : [{ weight: 0, reps: 0, linked: [] }];
+          return { name, sets: copiedSets, completed: false, notes: lastExercise?.notes || '' };
         });
         setCurrentWorkout({ muscleGroup, date: new Date().toISOString(), exercises: initialExercises });
         setExercises(initialExercises);
@@ -299,21 +334,54 @@
 
       const handleDeleteClick = (index) => {
         if (deleteConfirmIndex === index) deleteWorkout(index);
-        else setDeleteConfirmIndex(index);
+        else armDeleteWorkout(index);
       };
 
       const viewWorkout = (workout) => { setViewingWorkout(workout); setPage('detail'); };
 
+      const continueWorkout = (workout) => {
+        const exercises = workout.exercises.map(ex => ({ ...ex, sets: ex.sets.map(s => ({ ...s })), completed: false }));
+        setCurrentWorkout({ muscleGroup: workout.muscleGroup, date: new Date().toISOString(), exercises });
+        setExercises(exercises);
+        setPage('workout');
+      };
+
       const addSet = (exerciseIndex) => {
         const updated = [...exercises];
         const lastSet = updated[exerciseIndex].sets[updated[exerciseIndex].sets.length - 1];
-        updated[exerciseIndex].sets.push({ weight: lastSet.weight, reps: lastSet.reps });
+        updated[exerciseIndex].sets.push({ weight: lastSet.weight, reps: lastSet.reps, linked: [] });
         setExercises(updated);
       };
 
       const updateSet = (exerciseIndex, setIndex, field, value) => {
         const updated = [...exercises];
         updated[exerciseIndex].sets[setIndex][field] = parseFloat(value) || 0;
+        setExercises(updated);
+      };
+
+      const updateNote = (exerciseIndex, value) => {
+        const updated = [...exercises];
+        updated[exerciseIndex].notes = value;
+        setExercises(updated);
+      };
+
+      const addLinkedSet = (exIndex, setIndex, type) => {
+        const updated = [...exercises];
+        const set = updated[exIndex].sets[setIndex];
+        if (!set.linked) set.linked = [];
+        set.linked.push({ type, weight: type === 'drop' ? Math.max(0, set.weight - 10) : 0, reps: set.reps || 0 });
+        setExercises(updated);
+      };
+
+      const updateLinkedSet = (exIndex, setIndex, linkedIndex, field, value) => {
+        const updated = [...exercises];
+        updated[exIndex].sets[setIndex].linked[linkedIndex][field] = parseFloat(value) || 0;
+        setExercises(updated);
+      };
+
+      const removeLinkedSet = (exIndex, setIndex, linkedIndex) => {
+        const updated = [...exercises];
+        updated[exIndex].sets[setIndex].linked.splice(linkedIndex, 1);
         setExercises(updated);
       };
 
@@ -378,7 +446,7 @@
         if (!updated[muscleGroup].includes(newExerciseName.trim())) {
           updated[muscleGroup].push(newExerciseName.trim());
           setCustomExercises(updated);
-          const newExercise = { name: newExerciseName.trim(), sets: [{ weight: 0, reps: 0 }], completed: false };
+          const newExercise = { name: newExerciseName.trim(), sets: [{ weight: 0, reps: 0, linked: [] }], completed: false, notes: '' };
           setExercises([...exercises, newExercise]);
         }
         setNewExerciseName('');
@@ -527,6 +595,8 @@
             .workout-card-actions { display: flex; gap: 8px; align-items: center; }
             .view-workout-btn { background: rgba(255,102,0,0.15); border: 1px solid rgba(255,102,0,0.3); color: #ff6600; padding: 8px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; gap: 6px; }
             .view-workout-btn:active { background: rgba(255,102,0,0.25); transform: scale(0.95); }
+            .continue-workout-btn { background: rgba(74,222,128,0.15); border: 1px solid rgba(74,222,128,0.3); color: #4ade80; padding: 8px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; gap: 6px; }
+            .continue-workout-btn:active { background: rgba(74,222,128,0.25); transform: scale(0.95); }
             .empty-state { text-align: center; padding: 60px 20px; opacity: 0.5; }
             .empty-state-icon { margin-bottom: 20px; }
             .workout-page { min-height: 100vh; }
@@ -561,6 +631,28 @@
             .remove-set-btn { background: rgba(239,68,68,0.2); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 20px; font-weight: 700; }
             .add-set-btn { width: 100%; background: rgba(255,69,0,0.1); border: 2px dashed rgba(255,69,0,0.4); color: #ff6600; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.3s ease; }
             .add-set-btn:active { background: rgba(255,69,0,0.2); transform: scale(0.98); }
+            .exercise-notes { width: 100%; margin-top: 12px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: rgba(255,255,255,0.75); font-family: 'Inter', sans-serif; font-size: 13px; line-height: 1.5; padding: 10px 12px; resize: none; overflow-y: auto; max-height: calc(1.5em * 3 + 20px); min-height: calc(1.5em * 1 + 20px); box-sizing: border-box; transition: border-color 0.2s ease; }
+            .exercise-notes:focus { outline: none; border-color: rgba(255,102,0,0.5); background: rgba(0,0,0,0.35); }
+            .exercise-notes::placeholder { color: rgba(255,255,255,0.25); }
+            .exercise-notes-view { width: 100%; margin-top: 12px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; color: rgba(255,255,255,0.6); font-size: 13px; line-height: 1.5; padding: 10px 12px; max-height: calc(1.5em * 3 + 20px); overflow-y: auto; white-space: pre-wrap; word-break: break-word; }
+            .linked-set-row { display: grid; grid-template-columns: 18px 60px 1fr 1fr 28px; gap: 6px; align-items: center; margin-top: 6px; margin-left: 20px; padding-left: 10px; border-left: 2px solid; border-radius: 0 6px 6px 0; padding: 6px 6px 6px 10px; }
+            .linked-set-row.drop { border-color: #a855f7; background: rgba(168,85,247,0.07); }
+            .linked-set-row.super { border-color: #38bdf8; background: rgba(56,189,248,0.07); }
+            .linked-type-badge { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; writing-mode: horizontal-tb; }
+            .linked-type-badge.drop { color: #a855f7; }
+            .linked-type-badge.super { color: #38bdf8; }
+            .linked-input { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; color: white; padding: 7px 6px; font-size: 14px; font-weight: 600; text-align: center; width: 100%; }
+            .linked-input:focus { outline: none; border-color: #ff6600; }
+            .linked-remove-btn { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.25); color: #ef4444; width: 24px; height: 24px; border-radius: 5px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+            .add-linked-btn { background: none; border: none; cursor: pointer; padding: 0 4px; opacity: 0.45; transition: opacity 0.2s; display: flex; gap: 3px; align-items: center; }
+            .add-linked-btn:active { opacity: 0.9; }
+            .add-linked-pill { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 10px; letter-spacing: 0.4px; }
+            .add-linked-pill.drop { background: rgba(168,85,247,0.2); color: #a855f7; border: 1px solid rgba(168,85,247,0.35); }
+            .add-linked-pill.super { background: rgba(56,189,248,0.2); color: #38bdf8; border: 1px solid rgba(56,189,248,0.35); }
+            .card-exercise-list { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 5px; }
+            .card-exercise-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+            .card-exercise-name { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.75); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+            .card-exercise-sets { font-size: 11px; color: rgba(255,255,255,0.4); flex-shrink: 0; white-space: nowrap; }
             .finish-workout-btn { position: fixed; bottom: 70px; left: 20px; right: 20px; background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%); color: white; border: none; padding: 18px; border-radius: 16px; font-size: 18px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; box-shadow: 0 8px 24px rgba(74,222,128,0.4); display: flex; align-items: center; justify-content: center; gap: 10px; }
             .finish-workout-btn:active { transform: scale(0.98); }
             .delete-workout-btn { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; padding: 8px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; gap: 6px; min-width: 80px; justify-content: center; }
@@ -642,6 +734,46 @@
             .status-banner.error { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #ef4444; }
             .backup-trigger-btn { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.15); color: rgba(255,255,255,0.6); padding: 8px 14px; border-radius: 10px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: all 0.2s ease; }
             .backup-trigger-btn:active { background: rgba(255,255,255,0.12); }
+            .stats-panel { background: linear-gradient(135deg, rgba(255,102,0,0.1) 0%, rgba(255,140,0,0.05) 100%); border: 1px solid rgba(255,102,0,0.3); border-radius: 16px; padding: 18px 18px 14px; margin-bottom: 20px; }
+            .stats-panel-title { font-size: 11px; font-weight: 700; color: #ff6600; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 14px; }
+            .week-dots { display: flex; gap: 7px; margin-bottom: 16px; align-items: center; }
+            .week-dot-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; }
+            .week-dot { width: 100%; aspect-ratio: 1; border-radius: 50%; max-width: 32px; }
+            .week-dot.active { background: #ff6600; box-shadow: 0 0 8px rgba(255,102,0,0.6); }
+            .week-dot.rest { background: #1a1a1a; border: 1px solid rgba(255,255,255,0.08); }
+            .week-dot-label { font-size: 9px; opacity: 0.4; text-transform: uppercase; letter-spacing: 0.5px; }
+            .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+            .stats-cell { background: rgba(0,0,0,0.2); border-radius: 10px; padding: 10px 12px; }
+            .stats-cell-label { font-size: 10px; opacity: 0.5; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }
+            .stats-cell-value { font-size: 20px; font-weight: 700; color: #ff6600; line-height: 1.1; }
+            .stats-cell-sub { font-size: 10px; opacity: 0.45; margin-top: 2px; }
+            .cmp-block { margin-top: 6px; }
+            .cmp-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+            .cmp-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; opacity: 0.55; }
+            .cmp-delta { font-size: 12px; font-weight: 700; padding: 2px 7px; border-radius: 8px; }
+            .cmp-delta.up { color: #4ade80; background: rgba(74,222,128,0.12); }
+            .cmp-delta.down { color: #ef4444; background: rgba(239,68,68,0.12); }
+            .cmp-delta.flat { color: rgba(255,255,255,0.4); background: rgba(255,255,255,0.06); }
+            .cmp-bars { display: flex; flex-direction: column; gap: 5px; }
+            .cmp-bar-row { display: flex; align-items: center; gap: 8px; }
+            .cmp-bar-week-label { font-size: 10px; opacity: 0.5; width: 28px; flex-shrink: 0; text-align: right; }
+            .cmp-bar-track { flex: 1; height: 18px; background: rgba(0,0,0,0.3); border-radius: 9px; overflow: hidden; position: relative; }
+            .cmp-bar-fill { height: 100%; border-radius: 9px; display: flex; align-items: center; justify-content: flex-end; padding-right: 7px; min-width: 28px; transition: width 0.4s ease; }
+            .cmp-bar-fill.cur { background: linear-gradient(90deg, #ff4500, #ffa500); }
+            .cmp-bar-fill.prev { background: rgba(255,255,255,0.12); }
+            .cmp-bar-val { font-size: 10px; font-weight: 700; color: white; white-space: nowrap; }
+            .cmp-bar-val.prev-val { color: rgba(255,255,255,0.45); }
+            .cmp-log-hint { font-size: 10px; opacity: 0.4; margin-top: 6px; text-align: right; }
+            .stats-month-days { font-size: 13px; opacity: 0.7; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.07); display: flex; align-items: baseline; gap: 6px; }
+            .stats-month-days strong { font-size: 22px; font-weight: 700; color: #ff6600; }
+            .cardio-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.92); z-index: 3000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+            .cardio-content { background: #1a1a1a; border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 28px; width: 100%; max-width: 340px; }
+            .cardio-title { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 2px; color: #ff6600; text-align: center; margin-bottom: 20px; }
+            .cardio-type-row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+            .cardio-type-btn { flex: 1; min-width: 70px; padding: 8px 6px; border-radius: 10px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: rgba(255,255,255,0.6); transition: all 0.2s; text-align: center; }
+            .cardio-type-btn.selected { background: rgba(255,102,0,0.25); border-color: #ff6600; color: #ff6600; }
+            .log-cardio-btn { width: 100%; background: linear-gradient(135deg, #ff4500 0%, #ff8c00 100%); border: none; color: white; padding: 14px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 4px; }
+            .log-cardio-btn:disabled { opacity: 0.4; cursor: not-allowed; }
           `}</style>
 
           {page === 'history' && (
@@ -671,27 +803,94 @@
 
                 {workoutHistory.length > 0 && (
                   <>
-                    <div style={{ background: 'linear-gradient(135deg, rgba(255,102,0,0.1) 0%, rgba(255,140,0,0.05) 100%)', border: '1px solid rgba(255,102,0,0.3)', borderRadius: '16px', padding: '20px', marginBottom: '20px' }}>
-                      <div style={{ fontSize: '14px', fontWeight: '600', color: '#ff6600', marginBottom: '15px', textTransform: 'uppercase', letterSpacing: '1px' }}>Overall Stats</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px' }}>
-                        <div>
-                          <div className="stat-label">Total Workouts</div>
-                          <div className="stat-value" style={{ fontSize: '24px' }}>{workoutHistory.length}</div>
-                        </div>
-                        <div>
-                          <div className="stat-label">This Week</div>
-                          <div className="stat-value" style={{ fontSize: '24px' }}>
-                            {(() => { const d = new Date(); d.setDate(d.getDate() - 7); return workoutHistory.filter(w => new Date(w.date) >= d).length; })()}
+                    {(() => {
+                      const now = new Date();
+                      const DAY = 86400000;
+
+                      // 7-day dot strip
+                      const days7 = Array.from({ length: 7 }, (_, i) => {
+                        const d = new Date(now - (6 - i) * DAY);
+                        const ds = d.toDateString();
+                        const trained = workoutHistory.some(w => new Date(w.date).toDateString() === ds);
+                        const labels = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+                        return { label: labels[d.getDay()], trained };
+                      });
+
+                      // Month stats
+                      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                      const monthWorkouts = workoutHistory.filter(w => new Date(w.date) >= monthStart);
+                      const monthDays = new Set(monthWorkouts.map(w => new Date(w.date).toDateString())).size;
+
+                      // Week/prev-week volume
+                      const weekStart = new Date(now - 6 * DAY); weekStart.setHours(0,0,0,0);
+                      const prevWeekStart = new Date(weekStart - 7 * DAY);
+                      const weekWorkouts = workoutHistory.filter(w => new Date(w.date) >= weekStart);
+                      const prevWeekWorkouts = workoutHistory.filter(w => { const d = new Date(w.date); return d >= prevWeekStart && d < weekStart; });
+                      const weekVol = weekWorkouts.reduce((s, w) => s + getTotalVolume(w), 0);
+                      const prevWeekVol = prevWeekWorkouts.reduce((s, w) => s + getTotalVolume(w), 0);
+                      const fmtVol = v => v >= 1000 ? (v/1000).toFixed(1) + 'k' : String(v);
+
+                      // Cardio week/prev-week
+                      const weekCardio = cardioLog.filter(c => new Date(c.date) >= weekStart).reduce((s,c) => s + c.minutes, 0);
+                      const prevWeekCardio = cardioLog.filter(c => { const d = new Date(c.date); return d >= prevWeekStart && d < weekStart; }).reduce((s,c) => s + c.minutes, 0);
+
+                      const CompareBar = ({ cur, prev, fmt, unit, label, onTap }) => {
+                        const max = Math.max(cur, prev, 1);
+                        const curPct = Math.max((cur / max) * 100, cur > 0 ? 6 : 0);
+                        const prevPct = Math.max((prev / max) * 100, prev > 0 ? 6 : 0);
+                        const diff = cur - prev;
+                        const diffFmt = (diff > 0 ? '+' : '') + (unit === 'min' ? diff + ' min' : fmtVol(Math.abs(diff)) + (diff < 0 ? ' less' : ''));
+                        const cls = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
+                        return (
+                          <div className="cmp-block" onClick={onTap} style={onTap ? { cursor: 'pointer' } : {}}>
+                            <div className="cmp-header">
+                              <span className="cmp-label">{label}</span>
+                              <span className={"cmp-delta " + cls}>{diff === 0 ? '— same' : diffFmt}</span>
+                            </div>
+                            <div className="cmp-bars">
+                              <div className="cmp-bar-row">
+                                <span className="cmp-bar-week-label">Now</span>
+                                <div className="cmp-bar-track">
+                                  <div className="cmp-bar-fill cur" style={{ width: curPct + '%' }}>
+                                    <span className="cmp-bar-val">{fmt(cur)}{unit ? ' ' + unit : ''}</span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="cmp-bar-row">
+                                <span className="cmp-bar-week-label">–1w</span>
+                                <div className="cmp-bar-track">
+                                  <div className="cmp-bar-fill prev" style={{ width: prevPct + '%' }}>
+                                    <span className="cmp-bar-val prev-val">{fmt(prev)}{unit ? ' ' + unit : ''}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            {onTap && <div className="cmp-log-hint">tap to log cardio</div>}
                           </div>
-                        </div>
-                        <div>
-                          <div className="stat-label">Total Volume</div>
-                          <div className="stat-value" style={{ fontSize: '24px' }}>
-                            {(() => { const t = workoutHistory.reduce((s, w) => s + getTotalVolume(w), 0); return t >= 1000 ? (t/1000).toFixed(0) + 'k' : t; })()}
+                        );
+                      };
+
+                      return (
+                        <div className="stats-panel">
+                          <div className="stats-panel-title">This week</div>
+                          <div className="week-dots">
+                            {days7.map((d, i) => (
+                              <div key={i} className="week-dot-wrap">
+                                <div className={"week-dot " + (d.trained ? 'active' : 'rest')} />
+                                <span className="week-dot-label">{d.label}</span>
+                              </div>
+                            ))}
                           </div>
+                          <div className="stats-month-days">
+                            <strong>{monthDays}</strong>
+                            <span>training day{monthDays !== 1 ? 's' : ''} this month</span>
+                          </div>
+                          <CompareBar cur={weekVol} prev={prevWeekVol} fmt={fmtVol} unit="" label="Volume (lbs)" />
+                          <div style={{ height: '12px' }} />
+                          <CompareBar cur={weekCardio} prev={prevWeekCardio} fmt={v => String(v)} unit="min" label="Cardio" onTap={() => setShowCardioModal(true)} />
                         </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
 
                     <div className="exercise-progress-section">
                       <div className="exercise-progress-title">Progress by Exercise</div>
@@ -753,9 +952,14 @@
                               {workouts.length > 1 ? (
                                 <div className={"expand-icon " + (isExpanded ? 'expanded' : '')}><ChevronDown size={20} /></div>
                               ) : (
-                                <button className="view-workout-btn" onClick={(e) => { e.stopPropagation(); viewWorkout(latestWorkout); }}>
-                                  <Eye size={14} /> View
-                                </button>
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                  <button className="continue-workout-btn" onClick={(e) => { e.stopPropagation(); continueWorkout(latestWorkout); }}>
+                                    ▶ Continue
+                                  </button>
+                                  <button className="view-workout-btn" onClick={(e) => { e.stopPropagation(); viewWorkout(latestWorkout); }}>
+                                    <Eye size={14} /> View
+                                  </button>
+                                </div>
                               )}
                             </div>
 
@@ -767,9 +971,17 @@
                                   <div className="stat"><div className="stat-label">Avg per Workout</div><div className="stat-value" style={{ fontSize: '18px' }}>{Math.round(totalVolume / workouts.length).toLocaleString()}</div></div>
                                   <div className="stat"><div className="stat-label">Best Volume</div><div className="stat-value" style={{ fontSize: '18px' }}>{Math.max(...workouts.map(w => getTotalVolume(w))).toLocaleString()}</div></div>
                                 </div>
-                                <div className="group-summary">
-                                  Last exercise: {latestWorkout.exercises.map(ex => ex.name).slice(0, 3).join(' \u2022 ')}
-                                  {latestWorkout.exercises.length > 3 && ' + ' + (latestWorkout.exercises.length - 3) + ' more'}
+                                <div className="card-exercise-list">
+                                  {latestWorkout.exercises.filter(ex => ex.sets.some(s => s.weight > 0 || s.reps > 0)).map((ex, i) => {
+                                    const filledSets = ex.sets.filter(s => s.weight > 0 || s.reps > 0);
+                                    const maxWeight = Math.max(...filledSets.map(s => s.weight).filter(Boolean), 0);
+                                    return (
+                                      <div key={i} className="card-exercise-row">
+                                        <span className="card-exercise-name">{ex.name}</span>
+                                        <span className="card-exercise-sets">{filledSets.length} set{filledSets.length !== 1 ? 's' : ''}{maxWeight > 0 ? ' \u00b7 ' + maxWeight + 'lb' : ''}</span>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               </>
                             )}
@@ -784,11 +996,11 @@
                                       <div className="workout-mini-header">
                                         <div className="workout-date"><Calendar size={14} />{formatDate(workout.date)}</div>
                                         <div style={{ display: 'flex', gap: '8px' }}>
+                                          <button className="continue-workout-btn" onClick={(e) => { e.stopPropagation(); continueWorkout(workout); }}>▶ Continue</button>
                                           <button className="view-workout-btn" onClick={(e) => { e.stopPropagation(); viewWorkout(workout); }}><Eye size={14} /> View</button>
                                           <button
                                             className={"delete-workout-btn " + (deleteConfirmIndex === workoutGlobalIndex ? 'confirm' : '')}
                                             onClick={(e) => { e.stopPropagation(); handleDeleteClick(workoutGlobalIndex); }}
-                                            onBlur={() => setDeleteConfirmIndex(null)}
                                           >
                                             <Trash2 size={14} />
                                             {deleteConfirmIndex === workoutGlobalIndex ? 'Confirm?' : 'Delete'}
@@ -800,9 +1012,17 @@
                                         <div className="stat"><div className="stat-label">Sets</div><div className="stat-value" style={{ fontSize: '16px' }}>{getFilledSetsCount(workout)}</div></div>
                                         <div className="stat"><div className="stat-label">Volume</div><div className="stat-value" style={{ fontSize: '16px' }}>{getTotalVolume(workout).toLocaleString()}</div></div>
                                       </div>
-                                      <div className="exercise-summary" style={{ marginTop: '10px' }}>
-                                        {filledExs.map(ex => ex.name).slice(0, 3).join(' \u2022 ')}
-                                        {filledExs.length > 3 && ' + ' + (filledExs.length - 3) + ' more'}
+                                      <div className="card-exercise-list">
+                                        {filledExs.map((ex, i) => {
+                                          const filledSets = ex.sets.filter(s => s.weight > 0 || s.reps > 0);
+                                          const maxWeight = Math.max(...filledSets.map(s => s.weight).filter(Boolean), 0);
+                                          return (
+                                            <div key={i} className="card-exercise-row">
+                                              <span className="card-exercise-name">{ex.name}</span>
+                                              <span className="card-exercise-sets">{filledSets.length} set{filledSets.length !== 1 ? 's' : ''}{maxWeight > 0 ? ' \u00b7 ' + maxWeight + 'lb' : ''}</span>
+                                            </div>
+                                          );
+                                        })}
                                       </div>
                                     </div>
                                   );
@@ -829,6 +1049,31 @@
                     ))}
                   </div>
                   <button className="close-modal-btn" onClick={() => setShowGroupSelect(false)}>Cancel</button>
+                </div>
+              )}
+
+              {showCardioModal && (
+                <div className="cardio-modal" onClick={() => setShowCardioModal(false)}>
+                  <div className="cardio-content" onClick={e => e.stopPropagation()}>
+                    <div className="cardio-title">Log Cardio</div>
+                    <div className="cardio-type-row">
+                      {['Cardio','Running','Cycling','Rowing','HIIT','Swimming'].map(t => (
+                        <div key={t} className={"cardio-type-btn " + (cardioType === t ? 'selected' : '')} onClick={() => setCardioType(t)}>{t}</div>
+                      ))}
+                    </div>
+                    <input
+                      type="number"
+                      className="calculator-input"
+                      value={cardioMinutes}
+                      onChange={e => setCardioMinutes(e.target.value)}
+                      placeholder="Duration (minutes)"
+                      style={{ marginBottom: '14px' }}
+                    />
+                    <button className="log-cardio-btn" onClick={logCardio} disabled={!cardioMinutes || parseFloat(cardioMinutes) <= 0}>
+                      Log {cardioType}
+                    </button>
+                    <button className="modal-btn" onClick={() => setShowCardioModal(false)} style={{ marginTop: '10px' }}>Cancel</button>
+                  </div>
                 </div>
               )}
 
@@ -866,14 +1111,20 @@
                 </button>
                 <h2>{viewingWorkout?.muscleGroup}</h2>
                 <button
-                  className="delete-workout-btn"
+                  className="continue-workout-btn"
                   style={{ marginLeft: 'auto' }}
+                  onClick={() => continueWorkout(viewingWorkout)}
+                >
+                  ▶ Continue
+                </button>
+                <button
+                  className="delete-workout-btn"
+                  style={{ marginLeft: '6px' }}
                   onClick={() => {
                     const index = workoutHistory.findIndex(w => w === viewingWorkout);
                     if (deleteConfirmIndex === index) { deleteWorkout(index); setPage('history'); setViewingWorkout(null); }
-                    else setDeleteConfirmIndex(index);
+                    else armDeleteWorkout(index);
                   }}
-                  onBlur={() => setDeleteConfirmIndex(null)}
                 >
                   <Trash2 size={14} />
                   {deleteConfirmIndex === workoutHistory.findIndex(w => w === viewingWorkout) ? 'Confirm?' : 'Delete'}
@@ -961,6 +1212,9 @@
                             );
                           })}
                         </div>
+                        {exercise.notes ? (
+                          <div className="exercise-notes-view">{exercise.notes}</div>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -1007,8 +1261,7 @@
                           </button>
                           <button
                             className={"exercise-delete-btn " + (deleteExerciseConfirm === exIndex ? 'confirm' : '')}
-                            onClick={() => { if (deleteExerciseConfirm === exIndex) deleteExercise(exIndex); else setDeleteExerciseConfirm(exIndex); }}
-                            onBlur={() => setDeleteExerciseConfirm(null)}
+                            onClick={() => { if (deleteExerciseConfirm === exIndex) deleteExercise(exIndex); else armDeleteExercise(exIndex); }}
                             title="Delete exercise"
                           >
                             {deleteExerciseConfirm === exIndex ? 'Delete?' : <Trash2 size={13} />}
@@ -1065,6 +1318,28 @@
                                   <button className="remove-set-btn" onClick={() => removeSet(exIndex, setIndex)}>x</button>
                                 )}
                               </div>
+                              <div style={{ display: 'flex', gap: '6px', marginLeft: '20px', marginBottom: '2px' }}>
+                                <button className="add-linked-btn" onClick={() => addLinkedSet(exIndex, setIndex, 'drop')}>
+                                  <span className="add-linked-pill drop">+ DS</span>
+                                </button>
+                                <button className="add-linked-btn" onClick={() => addLinkedSet(exIndex, setIndex, 'super')}>
+                                  <span className="add-linked-pill super">+ SS</span>
+                                </button>
+                              </div>
+                              {(set.linked || []).map((lset, li) => (
+                                <div key={li} className={"linked-set-row " + lset.type}>
+                                  <span className={"linked-type-badge " + lset.type}>{lset.type === 'drop' ? 'DS' : 'SS'}</span>
+                                  <div className="set-input-group">
+                                    <div className="set-input-label">lbs</div>
+                                    <input type="number" className="linked-input" value={lset.weight || ''} onChange={(e) => updateLinkedSet(exIndex, setIndex, li, 'weight', e.target.value)} placeholder="0" />
+                                  </div>
+                                  <div className="set-input-group">
+                                    <div className="set-input-label">reps</div>
+                                    <input type="number" className="linked-input" value={lset.reps || ''} onChange={(e) => updateLinkedSet(exIndex, setIndex, li, 'reps', e.target.value)} placeholder="0" />
+                                  </div>
+                                  <button className="linked-remove-btn" onClick={() => removeLinkedSet(exIndex, setIndex, li)}>x</button>
+                                </div>
+                              ))}
                             </div>
                           );
                         })}
@@ -1073,6 +1348,14 @@
                       <button className="add-set-btn" onClick={() => addSet(exIndex)}>
                         <Plus size={16} /> Add Set
                       </button>
+
+                      <textarea
+                        className="exercise-notes"
+                        value={exercise.notes || ''}
+                        onChange={(e) => updateNote(exIndex, e.target.value)}
+                        placeholder="Notes..."
+                        rows={1}
+                      />
                     </div>
                   );
                 })}
