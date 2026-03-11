@@ -240,6 +240,10 @@
       const [deleteCardioIndex, setDeleteCardioIndex] = useState(null);
       const deleteCardioTimer = React.useRef(null);
       const [expandedCardioTypes, setExpandedCardioTypes] = useState({});
+      const [editingCardioIndex, setEditingCardioIndex] = useState(null);
+      const [editCardioType, setEditCardioType] = useState('Cardio');
+      const [editCardioMinutes, setEditCardioMinutes] = useState('');
+      const [editCardioDate, setEditCardioDate] = useState('');
 
       const armDeleteCardio = (index) => {
         clearTimeout(deleteCardioTimer.current);
@@ -252,6 +256,27 @@
         setCardioLog(updated);
         setDeleteCardioIndex(null);
         if (updated.length === 0) localStorage.removeItem('cardioLog');
+      };
+
+      const openEditCardio = (index) => {
+        const entry = cardioLog[index];
+        setEditingCardioIndex(index);
+        setEditCardioType(entry.type || 'Cardio');
+        setEditCardioMinutes(String(entry.minutes));
+        setEditCardioDate(new Date(entry.date).toISOString().slice(0, 10));
+      };
+
+      const saveCardioEdit = () => {
+        const mins = parseFloat(editCardioMinutes);
+        if (!mins || mins <= 0) return;
+        const updated = [...cardioLog];
+        const orig = new Date(updated[editingCardioIndex].date);
+        const [y, m, d] = editCardioDate.split('-').map(Number);
+        orig.setFullYear(y, m - 1, d);
+        updated[editingCardioIndex] = { ...updated[editingCardioIndex], type: editCardioType, minutes: mins, date: orig.toISOString() };
+        updated.sort((a, b) => new Date(b.date) - new Date(a.date));
+        setCardioLog(updated);
+        setEditingCardioIndex(null);
       };
       const [showBackupModal, setShowBackupModal] = useState(false);
       const [importStatus, setImportStatus] = useState(null);
@@ -818,6 +843,12 @@
             .cardio-type-btn.selected { background: rgba(255,102,0,0.25); border-color: #ff6600; color: #ff6600; }
             .log-cardio-btn { width: 100%; background: linear-gradient(135deg, #ff4500 0%, #ff8c00 100%); border: none; color: white; padding: 14px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 4px; }
             .log-cardio-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+            .cardio-date-input { width: 100%; background: rgba(0,0,0,0.3); border: 2px solid rgba(255,255,255,0.15); border-radius: 12px; color: white; padding: 13px 15px; font-size: 16px; font-weight: 600; margin-bottom: 14px; color-scheme: dark; font-family: 'Inter', sans-serif; }
+            .cardio-date-input:focus { outline: none; border-color: #38bdf8; }
+            .edit-cardio-btn { background: rgba(56,189,248,0.12); border: 1px solid rgba(56,189,248,0.3); color: #38bdf8; padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; gap: 4px; }
+            .edit-cardio-btn:active { background: rgba(56,189,248,0.25); transform: scale(0.95); }
+            .save-cardio-btn { width: 100%; background: linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%); border: none; color: white; padding: 14px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 4px; box-shadow: 0 4px 16px rgba(14,165,233,0.35); }
+            .save-cardio-btn:disabled { opacity: 0.4; cursor: not-allowed; }
           `}</style>
 
           <div className="sticky-top">
@@ -1245,13 +1276,21 @@
                                     <div className="workout-date">
                                       <Calendar size={14} /> {formatCardioDate(entry.date)}
                                     </div>
-                                    <button
-                                      className={"delete-workout-btn " + (deleteCardioIndex === entry.globalIndex ? 'confirm' : '')}
-                                      onClick={() => { if (deleteCardioIndex === entry.globalIndex) deleteCardio(entry.globalIndex); else armDeleteCardio(entry.globalIndex); }}
-                                    >
-                                      <Trash2 size={14} />
-                                      {deleteCardioIndex === entry.globalIndex ? 'Confirm?' : 'Delete'}
-                                    </button>
+                                    <div style={{ display: 'flex', gap: '6px' }}>
+                                      <button
+                                        className="edit-cardio-btn"
+                                        onClick={(e) => { e.stopPropagation(); openEditCardio(entry.globalIndex); }}
+                                      >
+                                        ✎ Edit
+                                      </button>
+                                      <button
+                                        className={"delete-workout-btn " + (deleteCardioIndex === entry.globalIndex ? 'confirm' : '')}
+                                        onClick={(e) => { e.stopPropagation(); if (deleteCardioIndex === entry.globalIndex) deleteCardio(entry.globalIndex); else armDeleteCardio(entry.globalIndex); }}
+                                      >
+                                        <Trash2 size={14} />
+                                        {deleteCardioIndex === entry.globalIndex ? 'Confirm?' : 'Delete'}
+                                      </button>
+                                    </div>
                                   </div>
                                   <div className="workout-stats" style={{ marginBottom: 0 }}>
                                     <div className="stat">
@@ -1305,6 +1344,40 @@
                       Log {cardioType}
                     </button>
                     <button className="modal-btn" onClick={() => setShowCardioModal(false)} style={{ marginTop: '10px' }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {editingCardioIndex !== null && (
+                <div className="cardio-modal" onClick={() => setEditingCardioIndex(null)}>
+                  <div className="cardio-content" onClick={e => e.stopPropagation()}>
+                    <div className="cardio-title" style={{ color: '#38bdf8' }}>Edit Session</div>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Date</div>
+                    <input
+                      type="date"
+                      className="cardio-date-input"
+                      value={editCardioDate}
+                      onChange={e => setEditCardioDate(e.target.value)}
+                    />
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Activity</div>
+                    <div className="cardio-type-row">
+                      {['Cardio','Running','Elliptical','Rowing','HIIT','Treadmill'].map(t => (
+                        <div key={t} className={"cardio-type-btn " + (editCardioType === t ? 'selected' : '')} style={editCardioType === t ? { background: 'rgba(56,189,248,0.2)', borderColor: '#38bdf8', color: '#38bdf8' } : {}} onClick={() => setEditCardioType(t)}>{t}</div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Duration</div>
+                    <input
+                      type="number"
+                      className="calculator-input"
+                      value={editCardioMinutes}
+                      onChange={e => setEditCardioMinutes(e.target.value)}
+                      placeholder="Duration (minutes)"
+                      style={{ marginBottom: '14px' }}
+                    />
+                    <button className="save-cardio-btn" onClick={saveCardioEdit} disabled={!editCardioMinutes || parseFloat(editCardioMinutes) <= 0}>
+                      Save Changes
+                    </button>
+                    <button className="modal-btn" onClick={() => setEditingCardioIndex(null)} style={{ marginTop: '10px' }}>Cancel</button>
                   </div>
                 </div>
               )}
