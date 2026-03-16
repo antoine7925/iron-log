@@ -101,12 +101,12 @@
 
     /* ── Muscle Groups ── */
     const MUSCLE_GROUPS = {
-      'Chest': ['Bench Press', 'Incline Dumbbell Press', 'Cable Flyes', 'Push-ups', 'Chest Dips'],
-      'Back': ['Deadlift', 'Pull-ups', 'Barbell Rows', 'Lat Pulldown', 'Cable Rows'],
-      'Legs': ['Squats', 'Leg Press', 'Romanian Deadlift', 'Leg Curls', 'Calf Raises'],
-      'Shoulders': ['Overhead Press', 'Lateral Raises', 'Face Pulls', 'Arnold Press', 'Shrugs'],
-      'Biceps': ['Barbell Curls', 'Hammer Curls', 'Preacher Curls', 'Cable Curls', 'Concentration Curls'],
-      'Triceps': ['Close Grip Bench', 'Tricep Dips', 'Overhead Extension', 'Pushdowns', 'Skull Crushers'],
+      'Chest': ['Bench Press', 'Incline Dumbbell Press', 'Chest Dips','Cable Flyes', ],
+      'Back': ['Pull-ups', 'Lat Pulldown', 'Seated Cable Rows', 'Deadlift',],
+      'Legs': ['Squats', 'Leg Press', 'Leg Curls', 'Bulgarian Split Squats', 'RDL', 'Calf Raises'],
+      'Shoulders': ['Overhead Press', 'Lateral Raises', 'Face Pulls', 'Shrugs'],
+      'Biceps': ['Barbell Curls', 'DB Curls', 'Cable Curls',],
+      'Triceps': ['Skull Crushers', 'Overhead Extension', 'Pushdowns', 'Close Grip Bench'],
       'Core': ['Planks', 'Hanging Leg Raises', 'Cable Crunches', 'Russian Twists', 'Ab Wheel'],
       'Glutes': ['Hip Thrusts', 'Bulgarian Split Squats', 'Glute Kickbacks', 'Cable Pull-throughs', 'Sumo Deadlift']
     };
@@ -231,6 +231,8 @@
       const deleteConfirmTimer = React.useRef(null);
       const deleteExerciseTimer = React.useRef(null);
       const [viewingWorkout, setViewingWorkout] = useState(null);
+      const [reviewDay, setReviewDay] = useState(null);
+      const [showMonthDots, setShowMonthDots] = useState(false);
       const [expandedGroups, setExpandedGroups] = useState({});
       const [showBackupModal, setShowBackupModal] = useState(false);
       const [importStatus, setImportStatus] = useState(null);
@@ -253,18 +255,13 @@
       const [stepsLog, setStepsLog] = useState([]);
       const [showStepsModal, setShowStepsModal] = useState(false);
       const [stepCount, setStepCount] = useState('');
-      const [stepType, setStepType] = useState('Walking');
-      const [stepDuration, setStepDuration] = useState('');
-      const [stepDistance, setStepDistance] = useState('');
+      const [stepDate, setStepDate] = useState(() => new Date().toISOString().slice(0, 10));
       const [deleteStepsIndex, setDeleteStepsIndex] = useState(null);
       const deleteStepsTimer = React.useRef(null);
       const [expandedStepTypes, setExpandedStepTypes] = useState({});
       const [expandedStepsWeeks, setExpandedStepsWeeks] = useState({});
       const [editingStepsIndex, setEditingStepsIndex] = useState(null);
-      const [editStepType, setEditStepType] = useState('Walking');
       const [editStepCount, setEditStepCount] = useState('');
-      const [editStepDuration, setEditStepDuration] = useState('');
-      const [editStepDistance, setEditStepDistance] = useState('');
       const [editStepDate, setEditStepDate] = useState('');
 
       /* ── Delete helpers ── */
@@ -344,27 +341,19 @@
       const logSteps = () => {
         const sc = parseInt(stepCount);
         if (!sc || sc <= 0) return;
-        const entry = {
-          date: new Date().toISOString(),
-          steps: sc,
-          type: stepType || 'Walking',
-          duration: parseFloat(stepDuration) || 0,
-          distance: parseFloat(stepDistance) || 0
-        };
-        setStepsLog(prev => [entry, ...prev]);
+        const [y, m, d] = stepDate.split('-').map(Number);
+        const date = new Date();
+        date.setFullYear(y, m - 1, d);
+        const entry = { date: date.toISOString(), steps: sc };
+        setStepsLog(prev => [...prev, entry].sort((a, b) => new Date(b.date) - new Date(a.date)));
         setStepCount('');
-        setStepDuration('');
-        setStepDistance('');
-        setStepType('Walking');
+        setStepDate(new Date().toISOString().slice(0, 10));
         setShowStepsModal(false);
       };
       const openEditSteps = (index) => {
         const entry = stepsLog[index];
         setEditingStepsIndex(index);
-        setEditStepType(entry.type || 'Walking');
         setEditStepCount(String(entry.steps));
-        setEditStepDuration(String(entry.duration || ''));
-        setEditStepDistance(String(entry.distance || ''));
         setEditStepDate(new Date(entry.date).toISOString().slice(0, 10));
       };
       const saveStepsEdit = () => {
@@ -374,14 +363,7 @@
         const orig = new Date(updated[editingStepsIndex].date);
         const [y, m, d] = editStepDate.split('-').map(Number);
         orig.setFullYear(y, m - 1, d);
-        updated[editingStepsIndex] = {
-          ...updated[editingStepsIndex],
-          type: editStepType,
-          steps: sc,
-          duration: parseFloat(editStepDuration) || 0,
-          distance: parseFloat(editStepDistance) || 0,
-          date: orig.toISOString()
-        };
+        updated[editingStepsIndex] = { steps: sc, date: orig.toISOString() };
         updated.sort((a, b) => new Date(b.date) - new Date(a.date));
         setStepsLog(updated);
         setEditingStepsIndex(null);
@@ -649,7 +631,7 @@
       const toggleGroup = (mg) => setExpandedGroups(prev => ({ ...prev, [mg]: !prev[mg] }));
 
       /* ── CompareBar component ── */
-      const CompareBar = ({ cur, prev, fmt, unit, label, onTap }) => {
+      const CompareBar = ({ cur, prev, fmt, unit, label, onTap, color }) => {
         const max = Math.max(cur, prev, 1);
         const curPct = Math.max((cur / max) * 100, cur > 0 ? 6 : 0);
         const prevPct = Math.max((prev / max) * 100, prev > 0 ? 6 : 0);
@@ -667,7 +649,7 @@
               <div className="cmp-bar-row">
                 <span className="cmp-bar-week-label">Now</span>
                 <div className="cmp-bar-track">
-                  <div className="cmp-bar-fill cur" style={{ width: curPct + '%' }}>
+                  <div className="cmp-bar-fill cur" style={{ width: curPct + '%', ...(color ? { background: color } : {}) }}>
                     <span className="cmp-bar-val">{fmt(cur)}{unit ? ' ' + unit : ''}</span>
                   </div>
                 </div>
@@ -705,7 +687,7 @@
             html, body { font-family: 'Inter', sans-serif; background: #0a0a0a; color: #fff; -webkit-font-smoothing: antialiased; overscroll-behavior: none; }
             .app { min-height: 100vh; background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%); padding-bottom: 20px; }
             .sticky-top { position: sticky; top: 0; z-index: 500; }
-            .header { background: linear-gradient(135deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%); padding: 31px 20px 15px; box-shadow: 0 10px 40px rgba(255, 69, 0, 0.5); position: relative; overflow: hidden; }
+            .header { background: linear-gradient(135deg, #ff4500 0%, #ff8c00 50%, #ffa500 100%); padding: 20px; box-shadow: 0 10px 40px rgba(255, 69, 0, 0.5); position: relative; overflow: hidden; border-radius: 20px; display: flex; align-items: center; justify-content: center; }
             .header::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"); opacity: 0.5; }
             .header-content { position: relative; z-index: 1; text-align: center; }
             .header h1 { font-family: 'Bebas Neue', sans-serif; font-size: 60px; letter-spacing: 6px; margin-bottom: 0; text-shadow: 3px 3px 6px rgba(0,0,0,0.4); }
@@ -928,7 +910,7 @@
             .cmp-bar-week-label { font-size: 10px; opacity: 0.5; width: 28px; flex-shrink: 0; text-align: right; }
             .cmp-bar-track { flex: 1; height: 18px; background: rgba(0,0,0,0.3); border-radius: 9px; overflow: hidden; position: relative; }
             .cmp-bar-fill { height: 100%; border-radius: 9px; display: flex; align-items: center; justify-content: flex-end; padding-right: 7px; min-width: 28px; transition: width 0.4s ease; }
-            .cmp-bar-fill.cur { background: linear-gradient(90deg, #ff4500, #ffa500); }
+            .cmp-bar-fill.cur { background: linear-gradient(90deg, #ffa500, #ff4500); }
             .cmp-bar-fill.prev { background: rgba(255,255,255,0.12); }
             .cmp-bar-val { font-size: 10px; font-weight: 700; color: white; white-space: nowrap; }
             .cmp-bar-val.prev-val { color: rgba(255,255,255,0.45); }
@@ -1011,8 +993,10 @@
               {/* Action Buttons */}
               <div className="start-workout-section">
                 <button className="start-btn" onClick={() => setShowGroupSelect(true)}><Plus size={24} /> Start Workout</button>
-                <button className="start-cardio-btn" onClick={() => setShowCardioModal(true)}><Heart size={24} /> Log Cardio</button>
-                <button className="start-steps-btn" onClick={() => setShowStepsModal(true)}><FootprintsIcon size={24} /> Log Steps</button>
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button className="start-cardio-btn" style={{ width: '50%', whiteSpace: 'nowrap' }} onClick={() => setShowCardioModal(true)}><Heart size={24} /> Log Cardio</button>
+                  <button className="start-steps-btn" style={{ width: '50%' }} onClick={() => setShowStepsModal(true)}><FootprintsIcon size={24} /> Log Steps</button>
+                </div>
                 {currentWorkout && (
                   <button className="resume-workout-btn" onClick={() => setPage('workout')}>&#9654; Resume: {currentWorkout.muscleGroup}</button>
                 )}
@@ -1033,7 +1017,7 @@
                     const ds = d.toDateString();
                     const trained = workoutHistory.some(w => new Date(w.date).toDateString() === ds);
                     const labels = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-                    return { label: labels[d.getDay()], trained };
+                    return { label: labels[d.getDay()], trained, dateString: ds };
                   });
                   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
                   const monthDays = new Set(workoutHistory.filter(w => new Date(w.date) >= monthStart).map(w => new Date(w.date).toDateString())).size;
@@ -1073,26 +1057,50 @@
                   return (
                     <>
                       {/* Main stats panel */}
+                      {(() => {
+                        const days30 = Array.from({ length: 30 }, (_, i) => {
+                          const d = new Date(now - (29 - i) * DAY);
+                          const ds = d.toDateString();
+                          const trained = workoutHistory.some(w => new Date(w.date).toDateString() === ds);
+                          return { label: String(d.getDate()), trained, dateString: ds };
+                        });
+                        return (
                       <div className="stats-panel">
-                        <div className="stats-panel-title">This week</div>
+                        <div className="stats-panel-title" onClick={() => setShowMonthDots(v => !v)} style={{ cursor: 'pointer', userSelect: 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span>{showMonthDots ? 'Last 30 days' : 'This week'}</span>
+                          <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', fontWeight: 400 }}>{showMonthDots ? '7 days ↑' : '30 days ↓'}</span>
+                        </div>
+                        {showMonthDots ? (
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '14px' }}>
+                            {days30.map((d, i) => (
+                              <div key={i} onClick={() => d.trained && setReviewDay(d.dateString)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', width: 'calc((100% - 54px) / 10)', cursor: d.trained ? 'pointer' : 'default' }}>
+                                <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: d.trained ? 'linear-gradient(135deg,#ff4500,#ff8c00)' : 'rgba(255,255,255,0.08)', boxShadow: d.trained ? '0 2px 8px rgba(255,69,0,0.4)' : 'none' }} />
+                                <span style={{ fontSize: '9px', color: d.trained ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.25)', fontWeight: d.trained ? 700 : 400 }}>{d.label}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
                         <div className="week-dots">
                           {days7.map((d, i) => (
-                            <div key={i} className="week-dot-wrap">
+                            <div key={i} className="week-dot-wrap" onClick={() => d.trained && setReviewDay(d.dateString)} style={d.trained ? { cursor: 'pointer' } : {}}>
                               <div className={"week-dot " + (d.trained ? 'active' : 'rest')} />
                               <span className="week-dot-label">{d.label}</span>
                             </div>
                           ))}
                         </div>
+                        )}
                         <div className="stats-month-days">
                           <strong>{monthDays}</strong>
                           <span>training day{monthDays !== 1 ? 's' : ''} this month</span>
                         </div>
                         <CompareBar cur={weekVol} prev={prevWeekVol} fmt={fmtVol} unit="" label="Volume (lbs)" />
                         <div style={{ height: '12px' }} />
-                        <CompareBar cur={weekCardio} prev={prevWeekCardio} fmt={v => String(v)} unit="min" label="Cardio" onTap={() => setShowCardioModal(true)} />
+                        <CompareBar cur={weekCardio} prev={prevWeekCardio} fmt={v => String(v)} unit="min" label="Cardio" onTap={() => setShowCardioModal(true)} color="linear-gradient(90deg, #38bdf8, #0ea5e9)" />
                         <div style={{ height: '12px' }} />
-                        <CompareBar cur={weekSteps} prev={prevWeekSteps} fmt={fmtSteps} unit="steps" label="Steps" onTap={() => setShowStepsModal(true)} />
+                        <CompareBar cur={weekSteps} prev={prevWeekSteps} fmt={fmtSteps} unit="steps" label="Steps" onTap={() => setShowStepsModal(true)} color="linear-gradient(90deg, #4ade80, #16a34a)" />
                       </div>
+                        );
+                      })()}
 
                       {/* ── Cardio Weekly Minutes Bar Chart ── */}
                       {cardioLog.length > 0 && (
@@ -1299,6 +1307,51 @@
                 </div>
               )}
 
+              {reviewDay && (() => {
+                const dayWorkouts = workoutHistory.filter(w => new Date(w.date).toDateString() === reviewDay);
+                const dayCardio = cardioLog.filter(c => new Date(c.date).toDateString() === reviewDay);
+                const daySteps = stepsLog.filter(s => new Date(s.date).toDateString() === reviewDay);
+                return (
+                  <div className="cardio-modal" onClick={() => setReviewDay(null)}>
+                    <div className="cardio-content" onClick={e => e.stopPropagation()} style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+                      <div className="cardio-title" style={{ color: '#ff8c00', marginBottom: '4px' }}>{new Date(reviewDay).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>
+                      {dayWorkouts.length > 0 && (
+                        <>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', margin: '14px 0 8px' }}>Workouts</div>
+                          {dayWorkouts.map((w, i) => (
+                            <div key={i} onClick={() => { setReviewDay(null); viewWorkout(w); }} style={{ background: 'rgba(255,102,0,0.1)', border: '1px solid rgba(255,102,0,0.3)', borderRadius: '12px', padding: '12px 14px', marginBottom: '8px', cursor: 'pointer' }}>
+                              <div style={{ fontWeight: 700, color: '#ff8c00', fontSize: '15px', marginBottom: '4px' }}>{w.muscleGroup}</div>
+                              <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>{w.exercises.filter(e => e.sets.some(s => s.weight > 0 || s.reps > 0)).length} exercises &middot; {getTotalVolume(w).toLocaleString()} lbs volume</div>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                      {dayCardio.length > 0 && (
+                        <>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', margin: '14px 0 8px' }}>Cardio</div>
+                          {dayCardio.map((c, i) => (
+                            <div key={i} style={{ background: 'rgba(14,165,233,0.1)', border: '1px solid rgba(56,189,248,0.3)', borderRadius: '12px', padding: '12px 14px', marginBottom: '8px' }}>
+                              <div style={{ fontWeight: 700, color: '#38bdf8', fontSize: '15px' }}>{c.type || 'Cardio'} &mdash; {c.minutes} min</div>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                      {daySteps.length > 0 && (
+                        <>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', margin: '14px 0 8px' }}>Steps</div>
+                          {daySteps.map((s, i) => (
+                            <div key={i} style={{ background: 'rgba(74,222,128,0.1)', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '12px', padding: '12px 14px', marginBottom: '8px' }}>
+                              <div style={{ fontWeight: 700, color: '#4ade80', fontSize: '15px' }}>{s.steps.toLocaleString()} steps</div>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                      <button className="modal-btn" onClick={() => setReviewDay(null)} style={{ marginTop: '14px' }}>Close</button>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {showCardioModal && (
                 <div className="cardio-modal" onClick={() => setShowCardioModal(false)}>
                   <div className="cardio-content" onClick={e => e.stopPropagation()}>
@@ -1319,15 +1372,9 @@
                 <div className="cardio-modal" onClick={() => setShowStepsModal(false)}>
                   <div className="cardio-content" onClick={e => e.stopPropagation()}>
                     <div className="cardio-title" style={{ color: '#4ade80' }}>Log Steps</div>
-                    <div className="cardio-type-row">
-                      {['Walking', 'Hiking', 'Treadmill Walk', 'Daily Steps'].map(t => (
-                        <div key={t} className={"steps-type-btn " + (stepType === t ? 'selected' : '')} onClick={() => setStepType(t)}>{t}</div>
-                      ))}
-                    </div>
-                    <input type="number" className="calculator-input" value={stepCount} onChange={e => setStepCount(e.target.value)} placeholder="Step count" style={{ marginBottom: '10px' }} />
-                    <input type="number" className="calculator-input" value={stepDuration} onChange={e => setStepDuration(e.target.value)} placeholder="Duration (minutes) — optional" style={{ marginBottom: '10px' }} />
-                    <input type="number" className="calculator-input" value={stepDistance} onChange={e => setStepDistance(e.target.value)} placeholder="Distance (miles) — optional" style={{ marginBottom: '14px' }} />
-                    <button className="log-steps-btn" onClick={logSteps} disabled={!stepCount || parseInt(stepCount) <= 0}>Log {stepType}</button>
+                    <input type="date" className="steps-date-input" value={stepDate} onChange={e => setStepDate(e.target.value)} style={{ marginBottom: '10px' }} />
+                    <input type="number" className="calculator-input" value={stepCount} onChange={e => setStepCount(e.target.value)} placeholder="Step count" style={{ marginBottom: '14px' }} />
+                    <button className="log-steps-btn" onClick={logSteps} disabled={!stepCount || parseInt(stepCount) <= 0}>Log Steps</button>
                     <button className="modal-btn" onClick={() => setShowStepsModal(false)} style={{ marginTop: '10px' }}>Cancel</button>
                   </div>
                 </div>
@@ -1358,19 +1405,9 @@
                   <div className="cardio-content" onClick={e => e.stopPropagation()}>
                     <div className="cardio-title" style={{ color: '#4ade80' }}>Edit Session</div>
                     <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Date</div>
-                    <input type="date" className="steps-date-input" value={editStepDate} onChange={e => setEditStepDate(e.target.value)} />
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Activity</div>
-                    <div className="cardio-type-row">
-                      {['Walking', 'Hiking', 'Treadmill Walk', 'Daily Steps'].map(t => (
-                        <div key={t} className={"steps-type-btn " + (editStepType === t ? 'selected' : '')} onClick={() => setEditStepType(t)}>{t}</div>
-                      ))}
-                    </div>
+                    <input type="date" className="steps-date-input" value={editStepDate} onChange={e => setEditStepDate(e.target.value)} style={{ marginBottom: '10px' }} />
                     <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Steps</div>
-                    <input type="number" className="calculator-input" value={editStepCount} onChange={e => setEditStepCount(e.target.value)} placeholder="Step count" style={{ marginBottom: '10px' }} />
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Duration</div>
-                    <input type="number" className="calculator-input" value={editStepDuration} onChange={e => setEditStepDuration(e.target.value)} placeholder="Minutes (optional)" style={{ marginBottom: '10px' }} />
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Distance</div>
-                    <input type="number" className="calculator-input" value={editStepDistance} onChange={e => setEditStepDistance(e.target.value)} placeholder="Miles (optional)" style={{ marginBottom: '14px' }} />
+                    <input type="number" className="calculator-input" value={editStepCount} onChange={e => setEditStepCount(e.target.value)} placeholder="Step count" style={{ marginBottom: '14px' }} />
                     <button className="save-steps-btn" onClick={saveStepsEdit} disabled={!editStepCount || parseInt(editStepCount) <= 0}>Save Changes</button>
                     <button className="modal-btn" onClick={() => setEditingStepsIndex(null)} style={{ marginTop: '10px' }}>Cancel</button>
                   </div>
