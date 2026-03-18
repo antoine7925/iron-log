@@ -243,7 +243,7 @@
       const [showCardioModal, setShowCardioModal] = useState(false);
       const [cardioMinutes, setCardioMinutes] = useState('');
       const [cardioType, setCardioType] = useState('Cardio');
-      const [cardioDate, setCardioDate] = useState(() => new Date().toISOString().slice(0, 10));
+      const [cardioDate, setCardioDate] = useState(() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); });
       const [deleteCardioIndex, setDeleteCardioIndex] = useState(null);
       const deleteCardioTimer = React.useRef(null);
       const [expandedCardioTypes, setExpandedCardioTypes] = useState({});
@@ -257,7 +257,7 @@
       const [stepsLog, setStepsLog] = useState([]);
       const [showStepsModal, setShowStepsModal] = useState(false);
       const [stepCount, setStepCount] = useState('');
-      const [stepDate, setStepDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); });
+      const [stepDate, setStepDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); });
       const [deleteStepsIndex, setDeleteStepsIndex] = useState(null);
       const deleteStepsTimer = React.useRef(null);
       const [expandedStepTypes, setExpandedStepTypes] = useState({});
@@ -331,7 +331,7 @@
         ]);
         setCardioMinutes('');
         setCardioType('Cardio');
-        setCardioDate(new Date().toISOString().slice(0, 10));
+        const _cd = new Date(); setCardioDate(_cd.getFullYear() + '-' + String(_cd.getMonth()+1).padStart(2,'0') + '-' + String(_cd.getDate()).padStart(2,'0'));
         setShowCardioModal(false);
       };
 
@@ -352,7 +352,7 @@
         const entry = { date: date.toISOString(), steps: sc };
         setStepsLog(prev => [...prev, entry].sort((a, b) => new Date(b.date) - new Date(a.date)));
         setStepCount('');
-        const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1); setStepDate(yesterday.toISOString().slice(0, 10));
+        const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1); setStepDate(yesterday.getFullYear() + '-' + String(yesterday.getMonth()+1).padStart(2,'0') + '-' + String(yesterday.getDate()).padStart(2,'0'));
         setShowStepsModal(false);
       };
       const openEditSteps = (index) => {
