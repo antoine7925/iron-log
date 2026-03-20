@@ -235,6 +235,7 @@
       const [showMonthDots, setShowMonthDots] = useState(false);
       const [expandedGroups, setExpandedGroups] = useState({});
       const [prExpanded, setPrExpanded] = useState(false);
+      const [expandedPRs, setExpandedPRs] = useState({});
       const [showBackupModal, setShowBackupModal] = useState(false);
       const [importStatus, setImportStatus] = useState(null);
 
@@ -1265,16 +1266,18 @@
                     workout.exercises.forEach(exercise => {
                       exercise.sets.forEach(set => {
                         if (set.weight > 0 && set.reps > 0) {
-                          if (!prMap[exercise.name] || set.weight > prMap[exercise.name].weight) {
-                            prMap[exercise.name] = { weight: set.weight, date: workout.date, workout };
-                          }
+                          if (!prMap[exercise.name]) prMap[exercise.name] = [];
+                          prMap[exercise.name].push({ weight: set.weight, reps: set.reps, date: workout.date, workout });
                         }
                       });
                     });
                   });
                   const prs = Object.entries(prMap)
-                    .map(([name, d]) => ({ name, ...d }))
-                    .sort((a, b) => b.weight - a.weight)
+                    .map(([name, sets]) => {
+                      const top3 = [...new Map(sets.sort((a, b) => b.weight - a.weight).map(s => [s.weight, s])).values()].slice(0, 3);
+                      return { name, best: top3[0], top3 };
+                    })
+                    .sort((a, b) => b.best.weight - a.best.weight)
                     .slice(0, 10);
                   const medals = ['\ud83e\udd47', '\ud83e\udd48', '\ud83e\udd49'];
                   return (
@@ -1285,17 +1288,33 @@
                       </div>
                       {prExpanded && (
                         <div className="pr-list">
-                          {prs.map((pr, i) => (
-                            <div key={pr.name} className="pr-row">
-                              <span className="pr-medal">{medals[i] || ''}</span>
-                              <span className="pr-name">{pr.name}</span>
-                              <div className="pr-right">
-                                <span className="pr-weight">{pr.weight} lbs</span>
-                                <span className="pr-date">{new Date(pr.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</span>
-                                <button className="view-workout-btn" style={{ padding: '3px 8px', fontSize: '11px' }} onClick={() => viewWorkout(pr.workout)}>View</button>
+                          {prs.map((pr, i) => {
+                            const isExpanded = expandedPRs[pr.name];
+                            return (
+                              <div key={pr.name}>
+                                <div className="pr-row" onClick={() => pr.top3.length > 1 && setExpandedPRs(p => ({ ...p, [pr.name]: !p[pr.name] }))} style={pr.top3.length > 1 ? { cursor: 'pointer' } : {}}>
+                                  <span className="pr-medal">{medals[i] || ''}</span>
+                                  <span className="pr-name">{pr.name}</span>
+                                  <div className="pr-right">
+                                    <span className="pr-weight">{pr.best.weight} lbs &times; {pr.best.reps} reps</span>
+                                    <span className="pr-date">{new Date(pr.best.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</span>
+                                    <button className="view-workout-btn" style={{ padding: '3px 8px', fontSize: '11px', marginTop: '2px' }} onClick={e => { e.stopPropagation(); viewWorkout(pr.best.workout); }}>View</button>
+                                    {pr.top3.length > 1 && <div className={"expand-icon " + (isExpanded ? 'expanded' : '')} style={{ marginLeft: '4px' }}><ChevronDown size={14} /></div>}
+                                  </div>
+                                </div>
+                                {isExpanded && pr.top3.slice(1).map((rec, j) => (
+                                  <div key={j} className="pr-row" style={{ marginLeft: '24px', opacity: 0.7, marginTop: '4px' }}>
+                                    <span className="pr-medal" style={{ fontSize: '11px' }}>#{j + 2}</span>
+                                    <span className="pr-name" style={{ fontSize: '12px' }}>{rec.weight} lbs &times; {rec.reps} reps</span>
+                                    <div className="pr-right">
+                                      <span className="pr-date">{new Date(rec.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</span>
+                                      <button className="view-workout-btn" style={{ padding: '3px 8px', fontSize: '11px' }} onClick={e => { e.stopPropagation(); viewWorkout(rec.workout); }}>View</button>
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
