@@ -253,6 +253,12 @@
       const [editCardioType, setEditCardioType] = useState('Cardio');
       const [editCardioMinutes, setEditCardioMinutes] = useState('');
       const [editCardioDate, setEditCardioDate] = useState('');
+      const [editCardioIncline, setEditCardioIncline] = useState('');
+      const [editCardioSpeed, setEditCardioSpeed] = useState('');
+      const [editCardioResistance, setEditCardioResistance] = useState('');
+      const [cardioIncline, setCardioIncline] = useState('');
+      const [cardioSpeed, setCardioSpeed] = useState('');
+      const [cardioResistance, setCardioResistance] = useState('');
 
       // Steps state
       const [stepsLog, setStepsLog] = useState([]);
@@ -263,6 +269,7 @@
       const deleteStepsTimer = React.useRef(null);
       const [expandedStepTypes, setExpandedStepTypes] = useState({});
       const [expandedStepsWeeks, setExpandedStepsWeeks] = useState({});
+      const [expandedStepsTypeMonths, setExpandedStepsTypeMonths] = useState({});
       const [editingStepsIndex, setEditingStepsIndex] = useState(null);
       const [editStepCount, setEditStepCount] = useState('');
       const [editStepDate, setEditStepDate] = useState('');
@@ -303,6 +310,9 @@
         setEditCardioType(entry.type || 'Cardio');
         setEditCardioMinutes(String(entry.minutes));
         setEditCardioDate(new Date(entry.date).toISOString().slice(0, 10));
+        setEditCardioIncline(entry.incline != null ? String(entry.incline) : '');
+        setEditCardioSpeed(entry.speed != null ? String(entry.speed) : '');
+        setEditCardioResistance(entry.resistance != null ? String(entry.resistance) : '');
       };
       const saveCardioEdit = () => {
         const mins = parseFloat(editCardioMinutes);
@@ -315,7 +325,9 @@
           ...updated[editingCardioIndex],
           type: editCardioType,
           minutes: mins,
-          date: orig.toISOString()
+          date: orig.toISOString(),
+          ...(editCardioType === 'Treadmill' ? { incline: editCardioIncline !== '' ? parseFloat(editCardioIncline) : null, speed: editCardioSpeed !== '' ? parseFloat(editCardioSpeed) : null } : { incline: null, speed: null }),
+          ...(editCardioType === 'Elliptical' ? { resistance: editCardioResistance !== '' ? parseFloat(editCardioResistance) : null } : { resistance: null }),
         };
         updated.sort((a, b) => new Date(b.date) - new Date(a.date));
         setCardioLog(updated);
@@ -327,11 +339,14 @@
         const [y, m, d] = cardioDate.split('-').map(Number);
         const dateObj = new Date(y, m - 1, d, 12, 0, 0);
         setCardioLog(prev => [
-          { date: dateObj.toISOString(), minutes: mins, type: cardioType || 'Cardio' },
+          { date: dateObj.toISOString(), minutes: mins, type: cardioType || 'Cardio', ...(cardioType === 'Treadmill' ? { incline: cardioIncline !== '' ? parseFloat(cardioIncline) : null, speed: cardioSpeed !== '' ? parseFloat(cardioSpeed) : null } : {}), ...(cardioType === 'Elliptical' ? { resistance: cardioResistance !== '' ? parseFloat(cardioResistance) : null } : {}) },
           ...prev
         ]);
         setCardioMinutes('');
         setCardioType('Cardio');
+        setCardioIncline('');
+        setCardioSpeed('');
+        setCardioResistance('');
         const _cd = new Date(); setCardioDate(_cd.getFullYear() + '-' + String(_cd.getMonth()+1).padStart(2,'0') + '-' + String(_cd.getDate()).padStart(2,'0'));
         setShowCardioModal(false);
       };
@@ -1408,11 +1423,20 @@
                     })()}
                     <input type="date" className="cardio-date-input" value={cardioDate} onChange={e => setCardioDate(e.target.value)} style={{ marginBottom: '14px' }} />
                     <div className="cardio-type-row">
-                      {['Cardio', 'Running', 'Elliptical', 'Rowing', 'HIIT', 'Treadmill'].map(t => (
+                      {['Cardio', 'Elliptical', 'Treadmill', 'Walking',  'Running',].map(t => (
                         <div key={t} className={"cardio-type-btn " + (cardioType === t ? 'selected' : '')} onClick={() => setCardioType(t)}>{t}</div>
                       ))}
                     </div>
                     <input type="number" className="calculator-input" value={cardioMinutes} onChange={e => setCardioMinutes(e.target.value)} placeholder="Duration (minutes)" style={{ marginBottom: '14px' }} />
+                    {cardioType === 'Treadmill' && (
+                      <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                        <input type="number" className="calculator-input" value={cardioIncline} onChange={e => setCardioIncline(e.target.value)} placeholder="Slope (%)" style={{ marginBottom: 0, flex: 1 }} />
+                        <input type="number" className="calculator-input" value={cardioSpeed} onChange={e => setCardioSpeed(e.target.value)} placeholder="Speed (mph)" style={{ marginBottom: 0, flex: 1 }} />
+                      </div>
+                    )}
+                    {cardioType === 'Elliptical' && (
+                      <input type="number" className="calculator-input" value={cardioResistance} onChange={e => setCardioResistance(e.target.value)} placeholder="Level" style={{ marginBottom: '14px' }} />
+                    )}
                     <button className="log-cardio-btn" onClick={logCardio} disabled={!cardioMinutes || parseFloat(cardioMinutes) <= 0}>Log {cardioType}</button>
                     <button className="modal-btn" onClick={() => setShowCardioModal(false)} style={{ marginTop: '10px' }}>Cancel</button>
                   </div>
@@ -1465,6 +1489,15 @@
                     </div>
                     <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Duration</div>
                     <input type="number" className="calculator-input" value={editCardioMinutes} onChange={e => setEditCardioMinutes(e.target.value)} placeholder="Duration (minutes)" style={{ marginBottom: '14px' }} />
+                    {editCardioType === 'Treadmill' && (
+                      <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                        <input type="number" className="calculator-input" value={editCardioIncline} onChange={e => setEditCardioIncline(e.target.value)} placeholder="Slope (%)" style={{ marginBottom: 0, flex: 1 }} />
+                        <input type="number" className="calculator-input" value={editCardioSpeed} onChange={e => setEditCardioSpeed(e.target.value)} placeholder="Speed (mph)" style={{ marginBottom: 0, flex: 1 }} />
+                      </div>
+                    )}
+                    {editCardioType === 'Elliptical' && (
+                      <input type="number" className="calculator-input" value={editCardioResistance} onChange={e => setEditCardioResistance(e.target.value)} placeholder="Level" style={{ marginBottom: '14px' }} />
+                    )}
                     <button className="save-cardio-btn" onClick={saveCardioEdit} disabled={!editCardioMinutes || parseFloat(editCardioMinutes) <= 0}>Save Changes</button>
                     <button className="modal-btn" onClick={() => setEditingCardioIndex(null)} style={{ marginTop: '10px' }}>Cancel</button>
                   </div>
@@ -1618,7 +1651,7 @@
                   <div className="week-history-header">
                     <div>
                       <div style={{ fontWeight: 700, color: '#38bdf8', fontSize: '15px' }}>{entry.type || 'Cardio'}</div>
-                      <div className="week-history-summary" style={{ marginTop: '2px' }}>{new Date(entry.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} &middot; {entry.minutes} min</div>
+                      <div className="week-history-summary" style={{ marginTop: '2px' }}>{new Date(entry.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} &middot; {entry.minutes} min{entry.type === 'Treadmill' && entry.incline != null ? ` · ${entry.incline}% slope` : ''}{entry.type === 'Treadmill' && entry.speed != null ? ` · ${entry.speed} mph` : ''}{entry.type === 'Elliptical' && entry.resistance != null ? ` · level ${entry.resistance}` : ''}</div>
                     </div>
                     <div style={{ display: 'flex', gap: '6px' }}>
                       <button className="edit-cardio-btn" onClick={() => openEditCardio(entry.globalIndex)}>&#9998; Edit</button>
@@ -1637,22 +1670,25 @@
           ══════════════════════════════════════════════════════════════ */}
           {page === 'stepsHistory' && (
             <div className="history-section">
+              <div style={{ marginBottom: '16px' }}>
+                <button className="start-steps-btn" onClick={() => setShowStepsModal(true)}><FootprintsIcon size={24} /> Log Steps</button>
+              </div>
               <div className="section-title" style={{ color: '#4ade80' }}><Calendar size={24} /> Week by Week</div>
               {(() => {
                 const DAY = 86400000;
                 const byWeek = {};
                 stepsLog.forEach((entry, idx) => {
                   const d = new Date(entry.date);
-                  const mon = new Date(d);
-                  mon.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-                  mon.setHours(0, 0, 0, 0);
-                  const key = mon.toISOString().slice(0, 10);
-                  if (!byWeek[key]) byWeek[key] = { start: new Date(mon), entries: [] };
+                  const sun = new Date(d);
+                  sun.setDate(d.getDate() - d.getDay());
+                  sun.setHours(0, 0, 0, 0);
+                  const key = sun.toISOString().slice(0, 10);
+                  if (!byWeek[key]) byWeek[key] = { start: new Date(sun), entries: [] };
                   byWeek[key].entries.push({ ...entry, globalIndex: idx });
                 });
                 return Object.values(byWeek).sort((a, b) => b.start - a.start).map((week, wi) => {
-                  const sun = new Date(week.start.getTime() + 6 * DAY);
-                  const label = week.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' \u2013 ' + sun.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                  const sat = new Date(week.start.getTime() + 6 * DAY);
+                  const label = week.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' \u2013 ' + sat.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                   const totalSteps = week.entries.reduce((s, e) => s + e.steps, 0);
                   const totalDur = week.entries.reduce((s, e) => s + (e.duration || 0), 0);
                   const totalDist = week.entries.reduce((s, e) => s + (e.distance || 0), 0);
@@ -1676,7 +1712,7 @@
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                           <div className="week-day-dots">
-                            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+                            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
                               <div key={i} className={"week-day-dot" + (dayDots[i] ? ' active-steps' : '')}>{d}</div>
                             ))}
                           </div>
@@ -1746,24 +1782,54 @@
                       )}
                       {isExpanded && (
                         <div className="expanded-workouts" style={{ borderColor: 'rgba(74,222,128,0.15)' }} onClick={e => e.stopPropagation()}>
-                          {sessions.map((entry, i) => (
-                            <div key={i} className="individual-workout" style={{ borderColor: 'rgba(74,222,128,0.1)', cursor: 'default' }}>
-                              <div className="workout-mini-header">
-                                <div className="workout-date"><Calendar size={14} /> {formatCardioDate(entry.date)}</div>
-                                <div style={{ display: 'flex', gap: '6px' }}>
-                                  <button className="edit-steps-btn" onClick={e => { e.stopPropagation(); openEditSteps(entry.globalIndex); }}>&#9998; Edit</button>
-                                  <button className={"delete-workout-btn " + (deleteStepsIndex === entry.globalIndex ? 'confirm' : '')} onClick={e => { e.stopPropagation(); if (deleteStepsIndex === entry.globalIndex) deleteSteps(entry.globalIndex); else armDeleteSteps(entry.globalIndex); }}>
-                                    <Trash2 size={14} />{deleteStepsIndex === entry.globalIndex ? 'Confirm?' : 'Delete'}
-                                  </button>
+                          {(() => {
+                            const byMonth = {};
+                            sessions.forEach(entry => {
+                              const d = new Date(entry.date);
+                              const mk = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+                              if (!byMonth[mk]) byMonth[mk] = { label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), entries: [] };
+                              byMonth[mk].entries.push(entry);
+                            });
+                            return Object.keys(byMonth).sort((a,b) => b.localeCompare(a)).map(mk => {
+                              const month = byMonth[mk];
+                              const mKey = type + '-' + mk;
+                              const mExp = expandedStepsTypeMonths[mKey];
+                              const monthSteps = month.entries.reduce((s,e) => s + e.steps, 0);
+                              const monthDur = month.entries.reduce((s,e) => s + (e.duration||0), 0);
+                              return (
+                                <div key={mk}>
+                                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 4px 8px', borderBottom:'1px solid rgba(74,222,128,0.12)', cursor:'pointer' }}
+                                    onClick={() => setExpandedStepsTypeMonths(p => ({...p, [mKey]: !p[mKey]}))}>
+                                    <div>
+                                      <div style={{ fontSize:'13px', fontWeight:700, color:'rgba(255,255,255,0.85)' }}>{month.label}</div>
+                                      <div style={{ fontSize:'11px', color:'rgba(255,255,255,0.4)', marginTop:'2px' }}>
+                                        {month.entries.length} session{month.entries.length!==1?'s':''} &middot; {monthSteps.toLocaleString()} steps{monthDur>0?' \u00b7 '+monthDur+' min':''}
+                                      </div>
+                                    </div>
+                                    <div className={"expand-icon " + (mExp ? 'expanded' : '')} style={{ marginRight:'4px' }}><ChevronDown size={15} /></div>
+                                  </div>
+                                  {mExp && month.entries.sort((a,b) => new Date(b.date)-new Date(a.date)).map((entry, i) => (
+                                    <div key={i} className="individual-workout" style={{ borderColor: 'rgba(74,222,128,0.1)', cursor: 'default' }}>
+                                      <div className="workout-mini-header">
+                                        <div className="workout-date"><Calendar size={14} /> {formatCardioDate(entry.date)}</div>
+                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                          <button className="edit-steps-btn" onClick={e => { e.stopPropagation(); openEditSteps(entry.globalIndex); }}>&#9998; Edit</button>
+                                          <button className={"delete-workout-btn " + (deleteStepsIndex === entry.globalIndex ? 'confirm' : '')} onClick={e => { e.stopPropagation(); if (deleteStepsIndex === entry.globalIndex) deleteSteps(entry.globalIndex); else armDeleteSteps(entry.globalIndex); }}>
+                                            <Trash2 size={14} />{deleteStepsIndex === entry.globalIndex ? 'Confirm?' : 'Delete'}
+                                          </button>
+                                        </div>
+                                      </div>
+                                      <div className="workout-stats" style={{ marginBottom: 0 }}>
+                                        <div className="stat"><div className="stat-label">Steps</div><div className="stat-value steps-stat-value" style={{ fontSize: '16px' }}>{entry.steps.toLocaleString()}</div></div>
+                                        {entry.duration > 0 && <div className="stat"><div className="stat-label">Duration</div><div className="stat-value steps-stat-value" style={{ fontSize: '16px' }}>{entry.duration} min</div></div>}
+                                        {entry.distance > 0 && <div className="stat"><div className="stat-label">Distance</div><div className="stat-value steps-stat-value" style={{ fontSize: '16px' }}>{entry.distance} mi</div></div>}
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
-                              </div>
-                              <div className="workout-stats" style={{ marginBottom: 0 }}>
-                                <div className="stat"><div className="stat-label">Steps</div><div className="stat-value steps-stat-value" style={{ fontSize: '16px' }}>{entry.steps.toLocaleString()}</div></div>
-                                {entry.duration > 0 && <div className="stat"><div className="stat-label">Duration</div><div className="stat-value steps-stat-value" style={{ fontSize: '16px' }}>{entry.duration} min</div></div>}
-                                {entry.distance > 0 && <div className="stat"><div className="stat-label">Distance</div><div className="stat-value steps-stat-value" style={{ fontSize: '16px' }}>{entry.distance} mi</div></div>}
-                              </div>
-                            </div>
-                          ))}
+                              );
+                            });
+                          })()}
                         </div>
                       )}
                     </div>
