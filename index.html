@@ -557,7 +557,7 @@
         if (!u[mg].includes(newExerciseName.trim())) {
           u[mg].push(newExerciseName.trim());
           setCustomExercises(u);
-          setExercises([...exercises, { name: newExerciseName.trim(), sets: [{ weight: 0, reps: 0, linked: [] }], completed: false, notes: '' }]);
+          setExercises([{ name: newExerciseName.trim(), sets: [{ weight: 0, reps: 0, linked: [] }], completed: false, notes: '' }, ...exercises]);
         }
         setNewExerciseName('');
         setShowAddExercise(false);
@@ -2037,6 +2037,7 @@
                                 <div className="set-input-group">
                                   <div className="set-input-label">Weight (lbs)</div>
                                   <input type="number" className="set-input" value={set.weight || ''} onChange={e => updateSet(exIndex, setIndex, 'weight', e.target.value)} placeholder="0" style={weightImproved && set.weight > 0 ? { borderColor: '#4ade80', background: 'rgba(74,222,128,0.1)' } : {}} />
+                                  {set.weight > 45 && <div style={{ fontSize: '10px', color: 'rgba(255,165,0,0.7)', marginTop: '4px', textAlign: 'center', lineHeight: 1.3 }}>{calculatePlates(set.weight)}</div>}
                                 </div>
                                 <div className="set-input-group">
                                   <div className="set-input-label">Reps</div>
