@@ -1837,6 +1837,38 @@
                 });
               })()}
 
+              {showStepsModal && (
+                <div className="cardio-modal" onClick={() => setShowStepsModal(false)}>
+                  <div className="cardio-content" onClick={e => e.stopPropagation()}>
+                    <div className="cardio-title" style={{ color: '#4ade80' }}>Log Steps</div>
+                    {(() => {
+                      const today = new Date();
+                      const DAY_LABELS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+                      return (
+                        <div style={{ display: 'flex', gap: '4px', marginBottom: '12px' }}>
+                          {Array.from({ length: 7 }, (_, i) => {
+                            const d = new Date(today); d.setDate(today.getDate() - (6 - i));
+                            const dayStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+                            const has = stepsLog.some(e => { const ed = new Date(e.date); return ed.getFullYear()===d.getFullYear() && ed.getMonth()===d.getMonth() && ed.getDate()===d.getDate(); });
+                            const sel = stepDate === dayStr;
+                            return (
+                              <div key={i} onClick={() => setStepDate(dayStr)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', cursor: 'pointer' }}>
+                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, background: sel ? '#4ade80' : has ? 'rgba(74,222,128,0.3)' : 'rgba(255,255,255,0.05)', border: sel ? '2px solid #4ade80' : has ? '1px solid rgba(74,222,128,0.5)' : '1px solid rgba(255,255,255,0.08)', color: sel ? '#000' : has ? '#4ade80' : 'rgba(255,255,255,0.3)', boxShadow: has && !sel ? '0 0 6px rgba(74,222,128,0.25)' : 'none' }}>{d.getDate()}</div>
+                                <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>{DAY_LABELS[d.getDay()]}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                    <input type="date" className="steps-date-input" value={stepDate} onChange={e => setStepDate(e.target.value)} style={{ marginBottom: '10px' }} />
+                    <input type="number" className="calculator-input" value={stepCount} onChange={e => setStepCount(e.target.value)} placeholder="Step count" style={{ marginBottom: '14px' }} />
+                    <button className="log-steps-btn" onClick={logSteps} disabled={!stepCount || parseInt(stepCount) <= 0}>Log Steps</button>
+                    <button className="modal-btn" onClick={() => setShowStepsModal(false)} style={{ marginTop: '10px' }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+
               {editingStepsIndex !== null && (
                 <div className="cardio-modal" onClick={() => setEditingStepsIndex(null)}>
                   <div className="cardio-content" onClick={e => e.stopPropagation()}>
