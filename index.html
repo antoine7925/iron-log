@@ -1075,6 +1075,17 @@
                   const maxStepsWeek = Math.max(...stepsWeeks.map(w => w.total), 1);
                   const totalAllSteps = stepsLog.reduce((s, e) => s + e.steps, 0);
 
+                  /* ── Workout 8-week bar data (Sun–Sat aligned) ── */
+                  const workoutWeeks = Array.from({ length: 8 }, (_, i) => {
+                    const weeksAgo = 7 - i;
+                    const wStart8 = new Date(weekStart.getTime() - weeksAgo * 7 * DAY);
+                    const wEnd = new Date(weekStart.getTime() - (weeksAgo - 1) * 7 * DAY);
+                    const vol = workoutHistory.filter(w => { const d = new Date(w.date); return d >= wStart8 && d < wEnd; }).reduce((s, w) => s + getTotalVolume(w), 0);
+                    return { label: weeksAgo === 0 ? 'Now' : '-' + weeksAgo + 'w', vol, isCurrent: weeksAgo === 0 };
+                  });
+                  const maxWorkoutWeekVol = Math.max(...workoutWeeks.map(w => w.vol), 1);
+                  const totalAllWorkoutVol = workoutHistory.reduce((s, w) => s + getTotalVolume(w), 0);
+
                   return (
                     <>
                       {/* Main stats panel */}
@@ -1122,6 +1133,66 @@
                       </div>
                         );
                       })()}
+
+                      {/* ── Workout Weekly Volume (lbs) Bar Chart ── */}
+                      {workoutHistory.length > 0 && (
+                        <div className="stats-panel" style={{ marginTop: '12px', borderColor: 'rgba(255,102,0,0.35)', background: 'linear-gradient(135deg, rgba(255,69,0,0.08) 0%, rgba(255,102,0,0.04) 100%)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '14px' }}>
+                            <div className="stats-panel-title" style={{ color: '#ff6600', marginBottom: 0 }}>Workouts &mdash; Weekly Volume (lbs)</div>
+                            <span style={{ fontSize: '13px', fontWeight: 700, color: '#ff8c00' }}>{Math.round(totalAllWorkoutVol).toLocaleString()} lbs</span>
+                          </div>
+                          {workoutWeeks.map((w, i) => {
+                            const pct = Math.max((w.vol / maxWorkoutWeekVol) * 100, w.vol > 0 ? 6 : 0);
+                            const labelInside = pct >= 30;
+                            return (
+                              <div key={i} className="cmp-bar-row" style={{ marginBottom: '5px' }}>
+                                <span className="cmp-bar-week-label">{w.label}</span>
+                                <div className="cmp-bar-track">
+                                  {w.vol > 0 && (
+                                    <div className="cmp-bar-fill" style={{ width: pct + '%', background: w.isCurrent ? 'linear-gradient(90deg, #ff4500, #ff8c00)' : 'rgba(255,102,0,0.25)' }}>
+                                      {labelInside && <span className="cmp-bar-val" style={w.isCurrent ? {} : { color: 'rgba(255,255,255,0.45)' }}>{Math.round(w.vol).toLocaleString()}</span>}
+                                    </div>
+                                  )}
+                                </div>
+                                {w.vol > 0 && !labelInside && (
+                                  <span style={{ fontSize: '10px', fontWeight: 700, color: w.isCurrent ? 'white' : 'rgba(255,255,255,0.45)', whiteSpace: 'nowrap', marginLeft: '4px' }}>{Math.round(w.vol).toLocaleString()}</span>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {/* This week by muscle group breakdown */}
+                          {weekVol > 0 && (() => {
+                            const byGroup = {};
+                            workoutHistory.filter(w => new Date(w.date) >= weekStart).forEach(w => {
+                              const g = w.muscleGroup || 'Other';
+                              byGroup[g] = (byGroup[g] || 0) + getTotalVolume(w);
+                            });
+                            const groups = Object.entries(byGroup).sort((a, b) => b[1] - a[1]);
+                            const maxGroupVol = Math.max(...groups.map(([, v]) => v), 1);
+                            return (
+                              <>
+                                <div style={{ height: '1px', background: 'rgba(255,102,0,0.15)', margin: '14px 0 12px' }} />
+                                <div className="stats-panel-title" style={{ color: '#ff6600', marginBottom: '10px' }}>This week by muscle group</div>
+                                {groups.map(([group, vol]) => {
+                                  const pct = Math.max((vol / maxGroupVol) * 100, 6);
+                                  const labelInside = pct >= 30;
+                                  return (
+                                    <div key={group} className="cmp-bar-row" style={{ marginBottom: '6px' }}>
+                                      <span className="cmp-bar-week-label" style={{ width: '64px', textAlign: 'left', opacity: 0.75, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{group}</span>
+                                      <div className="cmp-bar-track">
+                                        <div className="cmp-bar-fill" style={{ width: pct + '%', background: 'linear-gradient(90deg, #ff4500, #ff8c00)' }}>
+                                          {labelInside && <span className="cmp-bar-val">{Math.round(vol).toLocaleString()}</span>}
+                                        </div>
+                                      </div>
+                                      {!labelInside && <span style={{ fontSize: '10px', fontWeight: 700, color: 'white', whiteSpace: 'nowrap', marginLeft: '4px' }}>{Math.round(vol).toLocaleString()}</span>}
+                                    </div>
+                                  );
+                                })}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      )}
 
                       {/* ── Cardio Weekly Minutes Bar Chart ── */}
                       {cardioLog.length > 0 && (
