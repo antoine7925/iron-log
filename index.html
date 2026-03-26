@@ -1100,10 +1100,10 @@
               <div className="start-workout-section">
                 <button className="start-btn" onClick={() => setShowGroupSelect(true)}><Plus size={24} /> Start Workout</button>
                 <div style={{ display: 'flex', gap: '12px' }}>
-                  <button className="start-cardio-btn" style={{ width: '50%', whiteSpace: 'nowrap' }} onClick={() => setShowCardioModal(true)}><Heart size={24} /> Log Cardio</button>
-                  <button className="start-steps-btn" style={{ width: '50%' }} onClick={() => setShowStepsModal(true)}><FootprintsIcon size={24} /> Log Steps</button>
+                  <button className="start-cardio-btn" style={{ flex: 1, whiteSpace: 'nowrap', fontSize: '15px', padding: '14px 8px' }} onClick={() => setShowCardioModal(true)}><Heart size={20} /> Cardio</button>
+                  <button className="start-steps-btn" style={{ flex: 1, fontSize: '15px', padding: '14px 8px' }} onClick={() => setShowStepsModal(true)}><FootprintsIcon size={20} /> Steps</button>
+                  <button className="start-weight-btn" style={{ flex: 1, fontSize: '15px', padding: '14px 8px' }} onClick={() => setShowWeightModal(true)}><ScaleIcon size={20} /> Weight</button>
                 </div>
-                <button className="start-weight-btn" onClick={() => setShowWeightModal(true)}><ScaleIcon size={24} /> Log Weight</button>
                 {currentWorkout && (
                   <button className="resume-workout-btn" onClick={() => setPage('workout')}>&#9654; Resume: {currentWorkout.muscleGroup}</button>
                 )}
