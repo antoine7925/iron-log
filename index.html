@@ -98,6 +98,16 @@
         <path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 2.39 2 4.5 2 6.5h0a3.5 3.5 0 0 1-3.5 3.5h0"></path>
       </svg>
     );
+    const ScaleIcon = ({ size = 24 }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="5" r="3"></circle>
+        <path d="M12 8v13"></path>
+        <path d="M5 21h14"></path>
+        <path d="M5 12l-2 5h4l-2-5z"></path>
+        <path d="M19 12l-2 5h4l-2-5z"></path>
+        <path d="M5 12h14"></path>
+      </svg>
+    );
 
     /* ── Muscle Groups ── */
     const MUSCLE_GROUPS = {
@@ -274,6 +284,20 @@
       const [editStepCount, setEditStepCount] = useState('');
       const [editStepDate, setEditStepDate] = useState('');
 
+      // Weight state
+      const [weightLog, setWeightLog] = useState([]);
+      const [showWeightModal, setShowWeightModal] = useState(false);
+      const [weightValue, setWeightValue] = useState('');
+      const [weightUnit, setWeightUnit] = useState('lbs');
+      const [weightDate, setWeightDate] = useState(() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); });
+      const [deleteWeightIndex, setDeleteWeightIndex] = useState(null);
+      const deleteWeightTimer = React.useRef(null);
+      const [expandedWeightWeeks, setExpandedWeightWeeks] = useState({});
+      const [editingWeightIndex, setEditingWeightIndex] = useState(null);
+      const [editWeightValue, setEditWeightValue] = useState('');
+      const [editWeightDate, setEditWeightDate] = useState('');
+      const [editWeightUnit, setEditWeightUnit] = useState('lbs');
+
       /* ── Delete helpers ── */
       const armDeleteWorkout = (index) => {
         clearTimeout(deleteConfirmTimer.current);
@@ -294,6 +318,11 @@
         clearTimeout(deleteStepsTimer.current);
         setDeleteStepsIndex(index);
         if (index !== null) deleteStepsTimer.current = setTimeout(() => setDeleteStepsIndex(null), 2000);
+      };
+      const armDeleteWeight = (index) => {
+        clearTimeout(deleteWeightTimer.current);
+        setDeleteWeightIndex(index);
+        if (index !== null) deleteWeightTimer.current = setTimeout(() => setDeleteWeightIndex(null), 2000);
       };
 
       /* ── Cardio CRUD ── */
@@ -390,6 +419,43 @@
         setEditingStepsIndex(null);
       };
 
+      /* ── Weight CRUD ── */
+      const deleteWeight = (index) => {
+        const updated = [...weightLog];
+        updated.splice(index, 1);
+        setWeightLog(updated);
+        setDeleteWeightIndex(null);
+        if (updated.length === 0) localStorage.removeItem('weightLog');
+      };
+      const logWeight = () => {
+        const w = parseFloat(weightValue);
+        if (!w || w <= 0) return;
+        const [y, m, d] = weightDate.split('-').map(Number);
+        const dateObj = new Date(y, m - 1, d, 12, 0, 0);
+        setWeightLog(prev => [...prev, { date: dateObj.toISOString(), weight: w, unit: weightUnit }].sort((a, b) => new Date(b.date) - new Date(a.date)));
+        setWeightValue('');
+        setShowWeightModal(false);
+      };
+      const openEditWeight = (index) => {
+        const entry = weightLog[index];
+        setEditingWeightIndex(index);
+        setEditWeightValue(String(entry.weight));
+        setEditWeightDate(new Date(entry.date).toISOString().slice(0, 10));
+        setEditWeightUnit(entry.unit || 'lbs');
+      };
+      const saveWeightEdit = () => {
+        const w = parseFloat(editWeightValue);
+        if (!w || w <= 0) return;
+        const updated = [...weightLog];
+        const orig = new Date(updated[editingWeightIndex].date);
+        const [y, m, d] = editWeightDate.split('-').map(Number);
+        orig.setFullYear(y, m - 1, d);
+        updated[editingWeightIndex] = { date: orig.toISOString(), weight: w, unit: editWeightUnit };
+        updated.sort((a, b) => new Date(b.date) - new Date(a.date));
+        setWeightLog(updated);
+        setEditingWeightIndex(null);
+      };
+
       /* ── Load / Save ── */
       useEffect(() => {
         const saved = localStorage.getItem('workoutHistory');
@@ -400,6 +466,8 @@
         if (savedCardio) setCardioLog(JSON.parse(savedCardio));
         const savedSteps = localStorage.getItem('stepsLog');
         if (savedSteps) setStepsLog(JSON.parse(savedSteps));
+        const savedWeight = localStorage.getItem('weightLog');
+        if (savedWeight) setWeightLog(JSON.parse(savedWeight));
       }, []);
 
       useEffect(() => {
@@ -410,10 +478,11 @@
       }, [customExercises]);
       useEffect(() => { localStorage.setItem('cardioLog', JSON.stringify(cardioLog)); }, [cardioLog]);
       useEffect(() => { localStorage.setItem('stepsLog', JSON.stringify(stepsLog)); }, [stepsLog]);
+      useEffect(() => { localStorage.setItem('weightLog', JSON.stringify(weightLog)); }, [weightLog]);
 
       /* ── Backup ── */
       const exportData = () => {
-        const data = { exportedAt: new Date().toISOString(), version: 2, workoutHistory, customExercises, cardioLog, stepsLog };
+        const data = { exportedAt: new Date().toISOString(), version: 2, workoutHistory, customExercises, cardioLog, stepsLog, weightLog };
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -435,6 +504,7 @@
             if (data.customExercises) { setCustomExercises(data.customExercises); localStorage.setItem('customExercises', JSON.stringify(data.customExercises)); }
             if (data.cardioLog) { setCardioLog(data.cardioLog); localStorage.setItem('cardioLog', JSON.stringify(data.cardioLog)); }
             if (data.stepsLog) { setStepsLog(data.stepsLog); localStorage.setItem('stepsLog', JSON.stringify(data.stepsLog)); }
+            if (data.weightLog) { setWeightLog(data.weightLog); localStorage.setItem('weightLog', JSON.stringify(data.weightLog)); }
             setImportStatus('success');
             setTimeout(() => { setImportStatus(null); setShowBackupModal(false); }, 2000);
           } catch {
@@ -834,6 +904,19 @@
             .log-steps-btn:disabled { opacity: 0.4; cursor: not-allowed; }
             .save-steps-btn { width: 100%; background: linear-gradient(135deg, #16a34a 0%, #4ade80 100%); border: none; color: white; padding: 14px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 4px; box-shadow: 0 4px 16px rgba(74,222,128,0.35); }
             .save-steps-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+            .start-weight-btn { width: 100%; background: linear-gradient(135deg, #b45309 0%, #fbbf24 100%); color: white; border: none; padding: 18px; border-radius: 16px; font-size: 18px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; box-shadow: 0 8px 24px rgba(251,191,36,0.35); display: flex; align-items: center; justify-content: center; gap: 10px; transition: all 0.3s ease; }
+            .start-weight-btn:active { transform: scale(0.98); }
+            .weight-stat-value { color: #fbbf24 !important; }
+            .edit-weight-btn { background: rgba(251,191,36,0.12); border: 1px solid rgba(251,191,36,0.3); color: #fbbf24; padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; gap: 4px; }
+            .edit-weight-btn:active { background: rgba(251,191,36,0.25); transform: scale(0.95); }
+            .log-weight-btn { width: 100%; background: linear-gradient(135deg, #b45309 0%, #fbbf24 100%); border: none; color: white; padding: 14px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 4px; box-shadow: 0 4px 16px rgba(251,191,36,0.35); }
+            .log-weight-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+            .save-weight-btn { width: 100%; background: linear-gradient(135deg, #b45309 0%, #fbbf24 100%); border: none; color: white; padding: 14px; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 4px; box-shadow: 0 4px 16px rgba(251,191,36,0.35); }
+            .save-weight-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+            .week-history-card.weight { background: rgba(251,191,36,0.06); border: 1px solid rgba(251,191,36,0.2); }
+            .week-entry-value.weight-val { color: #fbbf24; }
+            .weight-trend-up { color: #f87171; font-weight: 700; font-size: 13px; }
+            .weight-trend-down { color: #4ade80; font-weight: 700; font-size: 13px; }
             .steps-date-input { width: 100%; background: rgba(0,0,0,0.3); border: 2px solid rgba(255,255,255,0.15); border-radius: 12px; color: white; padding: 13px 15px; font-size: 16px; font-weight: 600; margin-bottom: 14px; color-scheme: dark; font-family: 'Inter', sans-serif; }
             .steps-date-input:focus { outline: none; border-color: #4ade80; }
             @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
@@ -961,6 +1044,7 @@
             .week-day-dot { width: 22px; height: 22px; border-radius: 50%; font-size: 8px; font-weight: 700; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.04); color: rgba(255,255,255,0.25); border: 1px solid rgba(255,255,255,0.06); }
             .week-day-dot.active-cardio { background: rgba(56,189,248,0.35); color: #38bdf8; border-color: rgba(56,189,248,0.5); box-shadow: 0 0 6px rgba(56,189,248,0.3); }
             .week-day-dot.active-steps { background: rgba(74,222,128,0.35); color: #4ade80; border-color: rgba(74,222,128,0.5); box-shadow: 0 0 6px rgba(74,222,128,0.3); }
+            .week-day-dot.active-weight { background: rgba(251,191,36,0.35); color: #fbbf24; border-color: rgba(251,191,36,0.5); box-shadow: 0 0 6px rgba(251,191,36,0.3); }
             .week-history-entries { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 8px; animation: slideDown 0.25s ease; }
             .week-history-entry { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: rgba(0,0,0,0.2); border-radius: 10px; }
             .week-entry-date { font-size: 12px; opacity: 0.55; min-width: 80px; }
@@ -1003,6 +1087,7 @@
             {page === 'workoutHistory' && renderSubHeader('Workout History', '#ff4500', () => setPage('history'))}
             {page === 'cardioHistory' && renderSubHeader('Cardio History', '#0ea5e9', () => setPage('history'))}
             {page === 'stepsHistory' && renderSubHeader('Steps History', '#16a34a', () => setPage('history'))}
+            {page === 'weightHistory' && renderSubHeader('Weight History', '#b45309', () => setPage('history'))}
             <Stopwatch />
           </div>
 
@@ -1018,6 +1103,7 @@
                   <button className="start-cardio-btn" style={{ width: '50%', whiteSpace: 'nowrap' }} onClick={() => setShowCardioModal(true)}><Heart size={24} /> Log Cardio</button>
                   <button className="start-steps-btn" style={{ width: '50%' }} onClick={() => setShowStepsModal(true)}><FootprintsIcon size={24} /> Log Steps</button>
                 </div>
+                <button className="start-weight-btn" onClick={() => setShowWeightModal(true)}><ScaleIcon size={24} /> Log Weight</button>
                 {currentWorkout && (
                   <button className="resume-workout-btn" onClick={() => setPage('workout')}>&#9654; Resume: {currentWorkout.muscleGroup}</button>
                 )}
@@ -1030,7 +1116,7 @@
                 </div>
 
                 {/* ── This Week Stats Panel ── */}
-                {(workoutHistory.length > 0 || cardioLog.length > 0 || stepsLog.length > 0) && (() => {
+                {(workoutHistory.length > 0 || cardioLog.length > 0 || stepsLog.length > 0 || weightLog.length > 0) && (() => {
                   const now = new Date();
                   const DAY = 86400000;
                   const days7 = Array.from({ length: 7 }, (_, i) => {
@@ -1131,6 +1217,83 @@
                         <div style={{ height: '12px' }} />
                         <CompareBar cur={weekSteps} prev={prevWeekSteps} fmt={fmtSteps} unit="steps" label="Steps" onTap={() => setShowStepsModal(true)} color="linear-gradient(90deg, #4ade80, #16a34a)" />
                       </div>
+                        );
+                      })()}
+
+                      {/* ── Weight Weekly Avg Card ── */}
+                      {weightLog.length > 0 && (() => {
+                        const sortedAll = [...weightLog].sort((a, b) => new Date(a.date) - new Date(b.date));
+                        const unit = sortedAll[sortedAll.length - 1].unit || 'lbs';
+                        const hasMultiple = sortedAll.length >= 2;
+                        const firstWeight = sortedAll[0].weight;
+                        const latestWeight = sortedAll[sortedAll.length - 1].weight;
+                        const totalChange = hasMultiple ? latestWeight - firstWeight : null;
+                        const weightWeeks = Array.from({ length: 8 }, (_, i) => {
+                          const weeksAgo = 7 - i;
+                          const wStart8 = new Date(weekStart.getTime() - weeksAgo * 7 * DAY);
+                          const wEnd = new Date(weekStart.getTime() - (weeksAgo - 1) * 7 * DAY);
+                          const entries = weightLog.filter(e => { const d = new Date(e.date); return d >= wStart8 && d < wEnd; });
+                          const avg = entries.length > 0 ? entries.reduce((s, e) => s + e.weight, 0) / entries.length : null;
+                          return { label: weeksAgo === 0 ? 'Now' : '-' + weeksAgo + 'w', avg, isCurrent: weeksAgo === 0 };
+                        });
+                        const weeksWithData = weightWeeks.filter(w => w.avg !== null);
+                        const minW = Math.min(...weeksWithData.map(w => w.avg));
+                        const maxW = Math.max(...weeksWithData.map(w => w.avg));
+                        const range = maxW - minW;
+                        const currentWeekAvg = weightWeeks[7].avg;
+                        const prevWeekAvg = weightWeeks[6].avg;
+                        const weekChange = currentWeekAvg !== null && prevWeekAvg !== null ? currentWeekAvg - prevWeekAvg : null;
+                        const changeColor = v => v <= 0 ? '#4ade80' : '#f87171';
+                        const summaryItems = [
+                          currentWeekAvg !== null && { value: currentWeekAvg.toFixed(1), label: 'This wk (' + unit + ')', color: '#fbbf24' },
+                          weekChange !== null && { value: (weekChange > 0 ? '+' : '') + weekChange.toFixed(1), label: 'vs last wk (' + unit + ')', color: changeColor(weekChange) },
+                          totalChange !== null && { value: (totalChange > 0 ? '+' : '') + totalChange.toFixed(1), label: 'From start (' + unit + ')', color: changeColor(totalChange) },
+                        ].filter(Boolean);
+                        return (
+                          <div className="stats-panel" style={{ marginTop: '12px', borderColor: 'rgba(251,191,36,0.35)', background: 'linear-gradient(135deg, rgba(251,191,36,0.08) 0%, rgba(251,191,36,0.03) 100%)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '14px' }}>
+                              <div className="stats-panel-title" style={{ color: '#fbbf24', marginBottom: 0 }}>Weight &mdash; Weekly Avg</div>
+                              {totalChange !== null && (
+                                <span style={{ fontSize: '13px', fontWeight: 700, color: changeColor(totalChange) }}>
+                                  {totalChange > 0 ? '+' : ''}{totalChange.toFixed(1)} {unit} total
+                                </span>
+                              )}
+                            </div>
+                            {weightWeeks.map((w, i) => {
+                              if (w.avg === null) return (
+                                <div key={i} className="cmp-bar-row" style={{ marginBottom: '5px' }}>
+                                  <span className="cmp-bar-week-label">{w.label}</span>
+                                  <div className="cmp-bar-track" />
+                                </div>
+                              );
+                              const pct = range > 0.05 ? 20 + ((w.avg - minW) / range) * 80 : 60;
+                              const labelInside = pct >= 30;
+                              return (
+                                <div key={i} className="cmp-bar-row" style={{ marginBottom: '5px' }}>
+                                  <span className="cmp-bar-week-label">{w.label}</span>
+                                  <div className="cmp-bar-track">
+                                    <div className="cmp-bar-fill" style={{ width: pct + '%', background: w.isCurrent ? 'linear-gradient(90deg, #b45309, #fbbf24)' : 'rgba(251,191,36,0.25)' }}>
+                                      {labelInside && <span className="cmp-bar-val" style={w.isCurrent ? {} : { color: 'rgba(255,255,255,0.45)' }}>{w.avg.toFixed(1)}</span>}
+                                    </div>
+                                  </div>
+                                  {!labelInside && <span style={{ fontSize: '10px', fontWeight: 700, color: w.isCurrent ? 'white' : 'rgba(255,255,255,0.45)', whiteSpace: 'nowrap', marginLeft: '4px' }}>{w.avg.toFixed(1)}</span>}
+                                </div>
+                              );
+                            })}
+                            {summaryItems.length > 0 && (
+                              <>
+                                <div style={{ height: '1px', background: 'rgba(251,191,36,0.15)', margin: '14px 0 10px' }} />
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between' }}>
+                                  {summaryItems.map((item, i) => (
+                                    <div key={i} style={{ textAlign: 'center' }}>
+                                      <div style={{ fontSize: '17px', fontWeight: 700, color: item.color }}>{item.value}</div>
+                                      <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{item.label}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
                         );
                       })()}
 
@@ -1301,6 +1464,7 @@
                           })()}
                         </div>
                       )}
+
                     </>
                   );
                 })()}
@@ -1334,10 +1498,19 @@
                       </div>
                     </button>
                   )}
+                  {weightLog.length > 0 && (
+                    <button className="history-nav-btn" style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.3)', color: '#fbbf24' }} onClick={() => setPage('weightHistory')}>
+                      <div className="history-nav-left"><ScaleIcon size={22} /> Weight History</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className="history-nav-badge" style={{ background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.3)', color: '#fbbf24' }}>{weightLog.length}</span>
+                        <ChevronRight size={20} />
+                      </div>
+                    </button>
+                  )}
                 </div>
 
                 {/* Empty state */}
-                {workoutHistory.length === 0 && cardioLog.length === 0 && stepsLog.length === 0 && (
+                {workoutHistory.length === 0 && cardioLog.length === 0 && stepsLog.length === 0 && weightLog.length === 0 && (
                   <div className="empty-state">
                     <div className="empty-state-icon"><Dumbbell size={64} opacity={0.3} /></div>
                     <p>No workouts yet</p>
@@ -1542,6 +1715,43 @@
                     <input type="number" className="calculator-input" value={stepCount} onChange={e => setStepCount(e.target.value)} placeholder="Step count" style={{ marginBottom: '14px' }} />
                     <button className="log-steps-btn" onClick={logSteps} disabled={!stepCount || parseInt(stepCount) <= 0}>Log Steps</button>
                     <button className="modal-btn" onClick={() => setShowStepsModal(false)} style={{ marginTop: '10px' }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {showWeightModal && (
+                <div className="cardio-modal" onClick={() => setShowWeightModal(false)}>
+                  <div className="cardio-content" onClick={e => e.stopPropagation()}>
+                    <div className="cardio-title" style={{ color: '#fbbf24' }}>Log Weight</div>
+                    {(() => {
+                      const today = new Date();
+                      const DAY_LABELS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+                      return (
+                        <div style={{ display: 'flex', gap: '4px', marginBottom: '12px' }}>
+                          {Array.from({ length: 7 }, (_, i) => {
+                            const d = new Date(today); d.setDate(today.getDate() - (6 - i));
+                            const dayStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+                            const has = weightLog.some(e => { const ed = new Date(e.date); return ed.getFullYear()===d.getFullYear() && ed.getMonth()===d.getMonth() && ed.getDate()===d.getDate(); });
+                            const sel = weightDate === dayStr;
+                            return (
+                              <div key={i} onClick={() => setWeightDate(dayStr)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', cursor: 'pointer' }}>
+                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, background: sel ? '#fbbf24' : has ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.05)', border: sel ? '2px solid #fbbf24' : has ? '1px solid rgba(251,191,36,0.5)' : '1px solid rgba(255,255,255,0.08)', color: sel ? '#000' : has ? '#fbbf24' : 'rgba(255,255,255,0.3)', boxShadow: has && !sel ? '0 0 6px rgba(251,191,36,0.25)' : 'none' }}>{d.getDate()}</div>
+                                <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>{DAY_LABELS[d.getDay()]}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                    <input type="date" className="steps-date-input" value={weightDate} onChange={e => setWeightDate(e.target.value)} style={{ marginBottom: '10px' }} />
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                      {['lbs', 'kg'].map(u => (
+                        <button key={u} className={"steps-type-btn" + (weightUnit === u ? ' selected' : '')} style={weightUnit === u ? { background: 'rgba(251,191,36,0.25)', borderColor: '#fbbf24', color: '#fbbf24' } : {}} onClick={() => setWeightUnit(u)}>{u}</button>
+                      ))}
+                    </div>
+                    <input type="number" step="0.1" className="calculator-input" value={weightValue} onChange={e => setWeightValue(e.target.value)} placeholder={'Weight (' + weightUnit + ')'} style={{ marginBottom: '14px' }} />
+                    <button className="log-weight-btn" onClick={logWeight} disabled={!weightValue || parseFloat(weightValue) <= 0}>Log Weight</button>
+                    <button className="modal-btn" onClick={() => setShowWeightModal(false)} style={{ marginTop: '10px' }}>Cancel</button>
                   </div>
                 </div>
               )}
@@ -1950,6 +2160,151 @@
                     <input type="number" className="calculator-input" value={editStepCount} onChange={e => setEditStepCount(e.target.value)} placeholder="Step count" style={{ marginBottom: '14px' }} />
                     <button className="save-steps-btn" onClick={saveStepsEdit} disabled={!editStepCount || parseInt(editStepCount) <= 0}>Save Changes</button>
                     <button className="modal-btn" onClick={() => setEditingStepsIndex(null)} style={{ marginTop: '10px' }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ══════════════════════════════════════════════════════════════
+             WEIGHT HISTORY SUB-PAGE
+          ══════════════════════════════════════════════════════════════ */}
+          {page === 'weightHistory' && (
+            <div className="history-section">
+              <div style={{ marginBottom: '16px' }}>
+                <button className="start-weight-btn" onClick={() => setShowWeightModal(true)}><ScaleIcon size={24} /> Log Weight</button>
+              </div>
+              <div className="section-title" style={{ color: '#fbbf24' }}><Calendar size={24} /> Week by Week</div>
+              {(() => {
+                const DAY = 86400000;
+                const byWeek = {};
+                weightLog.forEach((entry, idx) => {
+                  const d = new Date(entry.date);
+                  const sun = new Date(d);
+                  sun.setDate(d.getDate() - d.getDay());
+                  sun.setHours(0, 0, 0, 0);
+                  const key = sun.toISOString().slice(0, 10);
+                  if (!byWeek[key]) byWeek[key] = { start: new Date(sun), entries: [] };
+                  byWeek[key].entries.push({ ...entry, globalIndex: idx });
+                });
+                const weeks = Object.values(byWeek).sort((a, b) => b.start - a.start);
+                return weeks.map((week, wi) => {
+                  const sat = new Date(week.start.getTime() + 6 * DAY);
+                  const label = week.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' \u2013 ' + sat.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                  const sorted = week.entries.slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+                  const latestEntry = sorted[0];
+                  const avgWeight = (week.entries.reduce((s, e) => s + e.weight, 0) / week.entries.length);
+                  const unit = latestEntry.unit || 'lbs';
+                  const isExp = expandedWeightWeeks[wi];
+                  const dayDots = Array.from({ length: 7 }, (_, i) => {
+                    const dd = new Date(week.start.getTime() + i * DAY);
+                    return week.entries.some(e => new Date(e.date).toDateString() === dd.toDateString());
+                  });
+                  // Compare with previous week
+                  const prevWeek = weeks[wi + 1];
+                  let trendEl = null;
+                  if (prevWeek) {
+                    const prevAvg = prevWeek.entries.reduce((s, e) => s + e.weight, 0) / prevWeek.entries.length;
+                    const delta = avgWeight - prevAvg;
+                    if (Math.abs(delta) >= 0.1) {
+                      const sign = delta > 0 ? '+' : '';
+                      trendEl = <span className={delta > 0 ? 'weight-trend-up' : 'weight-trend-down'}>{delta > 0 ? '\u2191' : '\u2193'} {sign}{delta.toFixed(1)} {unit}</span>;
+                    }
+                  }
+                  return (
+                    <div key={wi} className="week-history-card weight" onClick={() => setExpandedWeightWeeks(p => ({ ...p, [wi]: !p[wi] }))}>
+                      <div className="week-history-header">
+                        <div>
+                          <div className="week-history-range">{label}</div>
+                          <div className="week-history-summary" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                            <span>{week.entries.length} entr{week.entries.length !== 1 ? 'ies' : 'y'} &middot; avg {avgWeight.toFixed(1)} {unit}</span>
+                            {trendEl}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div className="week-day-dots">
+                            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+                              <div key={i} className={"week-day-dot" + (dayDots[i] ? ' active-weight' : '')}>{d}</div>
+                            ))}
+                          </div>
+                          <div className={"expand-icon " + (isExp ? 'expanded' : '')}><ChevronDown size={18} /></div>
+                        </div>
+                      </div>
+                      {isExp && (
+                        <div className="week-history-entries" onClick={e => e.stopPropagation()}>
+                          {sorted.map((entry, i) => (
+                            <div key={i} className="week-history-entry" style={{ flexWrap: 'wrap', gap: '6px' }}>
+                              <span className="week-entry-date">{new Date(entry.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                              <span className="week-entry-value weight-val">{entry.weight} {entry.unit || 'lbs'}</span>
+                              <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
+                                <button className="edit-weight-btn" onClick={e => { e.stopPropagation(); openEditWeight(entry.globalIndex); }}>&#9998; Edit</button>
+                                <button className={"delete-workout-btn " + (deleteWeightIndex === entry.globalIndex ? 'confirm' : '')} onClick={e => { e.stopPropagation(); if (deleteWeightIndex === entry.globalIndex) deleteWeight(entry.globalIndex); else armDeleteWeight(entry.globalIndex); }}>
+                                  <Trash2 size={14} />{deleteWeightIndex === entry.globalIndex ? 'Confirm?' : 'Delete'}
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                });
+              })()}
+
+              {/* Log Weight Modal */}
+              {showWeightModal && (
+                <div className="cardio-modal" onClick={() => setShowWeightModal(false)}>
+                  <div className="cardio-content" onClick={e => e.stopPropagation()}>
+                    <div className="cardio-title" style={{ color: '#fbbf24' }}>Log Weight</div>
+                    {(() => {
+                      const today = new Date();
+                      const DAY_LABELS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+                      return (
+                        <div style={{ display: 'flex', gap: '4px', marginBottom: '12px' }}>
+                          {Array.from({ length: 7 }, (_, i) => {
+                            const d = new Date(today); d.setDate(today.getDate() - (6 - i));
+                            const dayStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+                            const has = weightLog.some(e => { const ed = new Date(e.date); return ed.getFullYear()===d.getFullYear() && ed.getMonth()===d.getMonth() && ed.getDate()===d.getDate(); });
+                            const sel = weightDate === dayStr;
+                            return (
+                              <div key={i} onClick={() => setWeightDate(dayStr)} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px', cursor: 'pointer' }}>
+                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 700, background: sel ? '#fbbf24' : has ? 'rgba(251,191,36,0.3)' : 'rgba(255,255,255,0.05)', border: sel ? '2px solid #fbbf24' : has ? '1px solid rgba(251,191,36,0.5)' : '1px solid rgba(255,255,255,0.08)', color: sel ? '#000' : has ? '#fbbf24' : 'rgba(255,255,255,0.3)', boxShadow: has && !sel ? '0 0 6px rgba(251,191,36,0.25)' : 'none' }}>{d.getDate()}</div>
+                                <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>{DAY_LABELS[d.getDay()]}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                    <input type="date" className="steps-date-input" value={weightDate} onChange={e => setWeightDate(e.target.value)} style={{ marginBottom: '10px' }} />
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                      {['lbs', 'kg'].map(u => (
+                        <button key={u} className={"steps-type-btn" + (weightUnit === u ? ' selected' : '')} style={weightUnit === u ? { background: 'rgba(251,191,36,0.25)', borderColor: '#fbbf24', color: '#fbbf24' } : {}} onClick={() => setWeightUnit(u)}>{u}</button>
+                      ))}
+                    </div>
+                    <input type="number" step="0.1" className="calculator-input" value={weightValue} onChange={e => setWeightValue(e.target.value)} placeholder={'Weight (' + weightUnit + ')'} style={{ marginBottom: '14px' }} />
+                    <button className="log-weight-btn" onClick={logWeight} disabled={!weightValue || parseFloat(weightValue) <= 0}>Log Weight</button>
+                    <button className="modal-btn" onClick={() => setShowWeightModal(false)} style={{ marginTop: '10px' }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Edit Weight Modal */}
+              {editingWeightIndex !== null && (
+                <div className="cardio-modal" onClick={() => setEditingWeightIndex(null)}>
+                  <div className="cardio-content" onClick={e => e.stopPropagation()}>
+                    <div className="cardio-title" style={{ color: '#fbbf24' }}>Edit Entry</div>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Date</div>
+                    <input type="date" className="steps-date-input" value={editWeightDate} onChange={e => setEditWeightDate(e.target.value)} style={{ marginBottom: '10px' }} />
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                      {['lbs', 'kg'].map(u => (
+                        <button key={u} className={"steps-type-btn" + (editWeightUnit === u ? ' selected' : '')} style={editWeightUnit === u ? { background: 'rgba(251,191,36,0.25)', borderColor: '#fbbf24', color: '#fbbf24' } : {}} onClick={() => setEditWeightUnit(u)}>{u}</button>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Weight</div>
+                    <input type="number" step="0.1" className="calculator-input" value={editWeightValue} onChange={e => setEditWeightValue(e.target.value)} placeholder={'Weight (' + editWeightUnit + ')'} style={{ marginBottom: '14px' }} />
+                    <button className="save-weight-btn" onClick={saveWeightEdit} disabled={!editWeightValue || parseFloat(editWeightValue) <= 0}>Save Changes</button>
+                    <button className="modal-btn" onClick={() => setEditingWeightIndex(null)} style={{ marginTop: '10px' }}>Cancel</button>
                   </div>
                 </div>
               )}
