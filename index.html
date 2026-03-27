@@ -1119,6 +1119,7 @@
                 {(workoutHistory.length > 0 || cardioLog.length > 0 || stepsLog.length > 0 || weightLog.length > 0) && (() => {
                   const now = new Date();
                   const DAY = 86400000;
+
                   const days7 = Array.from({ length: 7 }, (_, i) => {
                     const d = new Date(now - (6 - i) * DAY);
                     const ds = d.toDateString();
@@ -1230,11 +1231,13 @@
                         const totalChange = hasMultiple ? latestWeight - firstWeight : null;
                         const weightWeeks = Array.from({ length: 8 }, (_, i) => {
                           const weeksAgo = 7 - i;
-                          const wStart8 = new Date(weekStart.getTime() - weeksAgo * 7 * DAY);
-                          const wEnd = new Date(weekStart.getTime() - (weeksAgo - 1) * 7 * DAY);
+                          const wStart8 = new Date(weekStart); wStart8.setDate(weekStart.getDate() - weeksAgo * 7); wStart8.setHours(0,0,0,0);
+                          const wEnd = new Date(weekStart); wEnd.setDate(weekStart.getDate() - (weeksAgo - 1) * 7); wEnd.setHours(0,0,0,0);
                           const entries = weightLog.filter(e => { const d = new Date(e.date); return d >= wStart8 && d < wEnd; });
                           const avg = entries.length > 0 ? entries.reduce((s, e) => s + e.weight, 0) / entries.length : null;
-                          return { label: weeksAgo === 0 ? 'Now' : '-' + weeksAgo + 'w', avg, isCurrent: weeksAgo === 0 };
+                          const startMo = wStart8.getMonth() + 1;
+                          const startDy = wStart8.getDate();
+                          return { label: weeksAgo === 0 ? 'Now' : '-' + weeksAgo + 'w', startDate: startMo + '/' + startDy, avg, isCurrent: weeksAgo === 0 };
                         });
                         const weeksWithData = weightWeeks.filter(w => w.avg !== null);
                         const minW = Math.min(...weeksWithData.map(w => w.avg));
@@ -1262,21 +1265,18 @@
                             {weightWeeks.map((w, i) => {
                               if (w.avg === null) return (
                                 <div key={i} className="cmp-bar-row" style={{ marginBottom: '5px' }}>
-                                  <span className="cmp-bar-week-label">{w.label}</span>
+                                  <span className="cmp-bar-week-label" style={{ width: '60px' }}><span style={{ opacity: 0.6 }}>{w.startDate}</span> {w.label}</span>
                                   <div className="cmp-bar-track" />
                                 </div>
                               );
                               const pct = range > 0.05 ? 20 + ((w.avg - minW) / range) * 80 : 60;
-                              const labelInside = pct >= 30;
                               return (
                                 <div key={i} className="cmp-bar-row" style={{ marginBottom: '5px' }}>
-                                  <span className="cmp-bar-week-label">{w.label}</span>
+                                  <span className="cmp-bar-week-label" style={{ width: '60px' }}><span style={{ opacity: 0.6 }}>{w.startDate}</span> {w.label}</span>
                                   <div className="cmp-bar-track">
-                                    <div className="cmp-bar-fill" style={{ width: pct + '%', background: w.isCurrent ? 'linear-gradient(90deg, #b45309, #fbbf24)' : 'rgba(251,191,36,0.25)' }}>
-                                      {labelInside && <span className="cmp-bar-val" style={w.isCurrent ? {} : { color: 'rgba(255,255,255,0.45)' }}>{w.avg.toFixed(1)}</span>}
-                                    </div>
+                                    <div className="cmp-bar-fill" style={{ width: pct + '%', background: w.isCurrent ? 'linear-gradient(90deg, #b45309, #fbbf24)' : 'rgba(251,191,36,0.25)' }} />
                                   </div>
-                                  {!labelInside && <span style={{ fontSize: '10px', fontWeight: 700, color: w.isCurrent ? 'white' : 'rgba(255,255,255,0.45)', whiteSpace: 'nowrap', marginLeft: '4px' }}>{w.avg.toFixed(1)}</span>}
+                                  <span style={{ fontSize: '10px', fontWeight: 700, color: w.isCurrent ? 'white' : 'rgba(255,255,255,0.45)', whiteSpace: 'nowrap', marginLeft: '4px' }}>{w.avg.toFixed(1)}</span>
                                 </div>
                               );
                             })}
