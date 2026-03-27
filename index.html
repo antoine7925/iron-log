@@ -218,6 +218,9 @@
       );
     });
 
+    /* ── Timezone helper: always interpret "now" as America/New_York ── */
+    const etNow = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+
     /* ══════════════════════════════════════════════════════════════
        MAIN APP
     ══════════════════════════════════════════════════════════════ */
@@ -254,7 +257,7 @@
       const [showCardioModal, setShowCardioModal] = useState(false);
       const [cardioMinutes, setCardioMinutes] = useState('');
       const [cardioType, setCardioType] = useState('Cardio');
-      const [cardioDate, setCardioDate] = useState(() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); });
+      const [cardioDate, setCardioDate] = useState(() => { const d = etNow(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); });
       const [deleteCardioIndex, setDeleteCardioIndex] = useState(null);
       const deleteCardioTimer = React.useRef(null);
       const [expandedCardioTypes, setExpandedCardioTypes] = useState({});
@@ -274,7 +277,7 @@
       const [stepsLog, setStepsLog] = useState([]);
       const [showStepsModal, setShowStepsModal] = useState(false);
       const [stepCount, setStepCount] = useState('');
-      const [stepDate, setStepDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); });
+      const [stepDate, setStepDate] = useState(() => { const d = etNow(); d.setDate(d.getDate() - 1); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); });
       const [deleteStepsIndex, setDeleteStepsIndex] = useState(null);
       const deleteStepsTimer = React.useRef(null);
       const [expandedStepTypes, setExpandedStepTypes] = useState({});
@@ -289,7 +292,7 @@
       const [showWeightModal, setShowWeightModal] = useState(false);
       const [weightValue, setWeightValue] = useState('');
       const [weightUnit, setWeightUnit] = useState('lbs');
-      const [weightDate, setWeightDate] = useState(() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); });
+      const [weightDate, setWeightDate] = useState(() => { const d = etNow(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); });
       const [deleteWeightIndex, setDeleteWeightIndex] = useState(null);
       const deleteWeightTimer = React.useRef(null);
       const [expandedWeightWeeks, setExpandedWeightWeeks] = useState({});
@@ -376,7 +379,7 @@
         setCardioIncline('');
         setCardioSpeed('');
         setCardioResistance('');
-        const _cd = new Date(); setCardioDate(_cd.getFullYear() + '-' + String(_cd.getMonth()+1).padStart(2,'0') + '-' + String(_cd.getDate()).padStart(2,'0'));
+        const _cd = etNow(); setCardioDate(_cd.getFullYear() + '-' + String(_cd.getMonth()+1).padStart(2,'0') + '-' + String(_cd.getDate()).padStart(2,'0'));
         setShowCardioModal(false);
       };
 
@@ -397,7 +400,7 @@
         const entry = { date: date.toISOString(), steps: sc };
         setStepsLog(prev => [...prev, entry].sort((a, b) => new Date(b.date) - new Date(a.date)));
         setStepCount('');
-        const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1); setStepDate(yesterday.getFullYear() + '-' + String(yesterday.getMonth()+1).padStart(2,'0') + '-' + String(yesterday.getDate()).padStart(2,'0'));
+        const yesterday = etNow(); yesterday.setDate(yesterday.getDate() - 1); setStepDate(yesterday.getFullYear() + '-' + String(yesterday.getMonth()+1).padStart(2,'0') + '-' + String(yesterday.getDate()).padStart(2,'0'));
         setShowStepsModal(false);
       };
       const openEditSteps = (index) => {
@@ -487,7 +490,8 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'iron-log-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+        const etExport = etNow();
+        a.download = 'iron-log-backup-' + etExport.getFullYear() + '-' + String(etExport.getMonth()+1).padStart(2,'0') + '-' + String(etExport.getDate()).padStart(2,'0') + '.json';
         a.click();
         URL.revokeObjectURL(url);
       };
@@ -662,7 +666,7 @@
       /* ── Formatting helpers ── */
       const formatDate = (dateString) => {
         const date = new Date(dateString);
-        const today = new Date();
+        const today = etNow();
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
         if (date.toDateString() === today.toDateString()) return 'Today';
@@ -674,7 +678,7 @@
       };
       const formatCardioDate = (dateString) => {
         const date = new Date(dateString);
-        const today = new Date();
+        const today = etNow();
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
         const dayOfWeek = date.toLocaleDateString('en-US', { weekday: 'long' });
@@ -1117,7 +1121,7 @@
 
                 {/* ── This Week Stats Panel ── */}
                 {(workoutHistory.length > 0 || cardioLog.length > 0 || stepsLog.length > 0 || weightLog.length > 0) && (() => {
-                  const now = new Date();
+                  const now = etNow();
                   const DAY = 86400000;
 
                   const days7 = Array.from({ length: 7 }, (_, i) => {
@@ -1646,7 +1650,7 @@
                   <div className="cardio-content" onClick={e => e.stopPropagation()}>
                     <div className="cardio-title">Log Cardio</div>
                     {(() => {
-                      const today = new Date();
+                      const today = etNow();
                       const DAY_LABELS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
                       return (
                         <div style={{ display: 'flex', gap: '4px', marginBottom: '12px' }}>
@@ -1692,7 +1696,7 @@
                   <div className="cardio-content" onClick={e => e.stopPropagation()}>
                     <div className="cardio-title" style={{ color: '#4ade80' }}>Log Steps</div>
                     {(() => {
-                      const today = new Date();
+                      const today = etNow();
                       const DAY_LABELS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
                       return (
                         <div style={{ display: 'flex', gap: '4px', marginBottom: '12px' }}>
@@ -1724,7 +1728,7 @@
                   <div className="cardio-content" onClick={e => e.stopPropagation()}>
                     <div className="cardio-title" style={{ color: '#fbbf24' }}>Log Weight</div>
                     {(() => {
-                      const today = new Date();
+                      const today = etNow();
                       const DAY_LABELS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
                       return (
                         <div style={{ display: 'flex', gap: '4px', marginBottom: '12px' }}>
@@ -2123,7 +2127,7 @@
                   <div className="cardio-content" onClick={e => e.stopPropagation()}>
                     <div className="cardio-title" style={{ color: '#4ade80' }}>Log Steps</div>
                     {(() => {
-                      const today = new Date();
+                      const today = etNow();
                       const DAY_LABELS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
                       return (
                         <div style={{ display: 'flex', gap: '4px', marginBottom: '12px' }}>
@@ -2257,7 +2261,7 @@
                   <div className="cardio-content" onClick={e => e.stopPropagation()}>
                     <div className="cardio-title" style={{ color: '#fbbf24' }}>Log Weight</div>
                     {(() => {
-                      const today = new Date();
+                      const today = etNow();
                       const DAY_LABELS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
                       return (
                         <div style={{ display: 'flex', gap: '4px', marginBottom: '12px' }}>
