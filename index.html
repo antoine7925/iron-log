@@ -112,13 +112,13 @@
     /* ── Muscle Groups ── */
     const MUSCLE_GROUPS = {
       'Chest': ['Bench Press', 'Incline Dumbbell Press', 'Chest Dips','Cable Flyes', ],
-      'Back': ['Pull-ups', 'Lat Pulldown', 'Seated Cable Rows', 'Deadlift',],
-      'Legs': ['Squats', 'Leg Press', 'Leg Curls', 'Bulgarian Split Squats', 'RDL', 'Calf Raises'],
-      'Shoulders': ['Overhead Press', 'Lateral Raises', 'Face Pulls', 'Shrugs'],
+      'Back': ['Lat Pulldown', 'Pull-ups', 'Pull-Over', 'Seated Cable Rows', 'Deadlift',],
+      'Legs': ['Seated Leg Curls', 'Leg Press', 'Bulgarian Split Squats', 'RDL', 'Lying Leg Curls' ],
+      'Shoulders': ['Overhead Press', 'Lateral Raises', 'Rear Delt Flyes', 'Front Raises', 'Shrugs'],
       'Biceps': ['Barbell Curls', 'DB Curls', 'Cable Curls',],
       'Triceps': ['Skull Crushers', 'Overhead Extension', 'Pushdowns', 'Close Grip Bench'],
-      'Core': ['Planks', 'Hanging Leg Raises', 'Cable Crunches', 'Russian Twists', 'Ab Wheel'],
-      'Glutes': ['Hip Thrusts', 'Bulgarian Split Squats', 'Glute Kickbacks', 'Cable Pull-throughs', 'Sumo Deadlift']
+      'Calves': ['Calf Raises', 'Seated Calf Raises', 'Calf Press on Leg Press'],
+      'Glutes': ['Hip Thrusts', 'Sumo Deadlift']
     };
 
     /* ── Stopwatch ── */
@@ -554,7 +554,16 @@
       };
       const viewWorkout = (workout) => { setViewingWorkout(workout); setPage('detail'); };
       const continueWorkout = (workout) => {
-        const exs = workout.exercises.map(ex => ({ ...ex, sets: ex.sets.map(s => ({ ...s })), completed: false }));
+        const defaultExercises = MUSCLE_GROUPS[workout.muscleGroup] || [];
+        const customExercisesForGroup = customExercises[workout.muscleGroup] || [];
+        const groupExercises = [...defaultExercises, ...customExercisesForGroup];
+        const exs = groupExercises.map(name => {
+          const prev = workout.exercises.find(e => e.name === name);
+          const copiedSets = prev?.sets
+            ? prev.sets.map(s => ({ weight: s.weight, reps: s.reps, linked: (s.linked || []).map(l => ({ ...l })) }))
+            : [{ weight: 0, reps: 0, linked: [] }];
+          return { name, sets: copiedSets, completed: false, notes: prev?.notes || '' };
+        });
         setCurrentWorkout({ muscleGroup: workout.muscleGroup, date: new Date().toISOString(), exercises: exs });
         setExercises(exs);
         setPage('workout');
@@ -617,7 +626,10 @@
         setExercises(u);
       };
       const finishWorkout = () => {
-        const workout = { ...currentWorkout, exercises, date: new Date().toISOString() };
+        const filledExercises = exercises.filter(ex =>
+          ex.sets.some(s => s.weight > 0 || s.reps > 0 || (s.linked || []).some(l => l.weight > 0 || l.reps > 0))
+        );
+        const workout = { ...currentWorkout, exercises: filledExercises, date: new Date().toISOString() };
         setWorkoutHistory([workout, ...workoutHistory]);
         setPage('history');
         setCurrentWorkout(null);
@@ -886,7 +898,7 @@
             .card-exercise-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
             .card-exercise-name { font-size: 12px; font-weight: 600; color: rgba(255,255,255,0.75); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
             .card-exercise-sets { font-size: 11px; color: rgba(255,255,255,0.4); flex-shrink: 0; white-space: nowrap; }
-            .finish-workout-btn { position: fixed; bottom: 70px; left: 20px; right: 20px; background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%); color: white; border: none; padding: 18px; border-radius: 16px; font-size: 18px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; box-shadow: 0 8px 24px rgba(74,222,128,0.4); display: flex; align-items: center; justify-content: center; gap: 10px; }
+            .finish-workout-btn { position: fixed; bottom: 20px; left: 40px; right: 40px; background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%); color: white; border: none; padding: 12px; border-radius: 12px; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; box-shadow: 0 4px 16px rgba(74,222,128,0.4); display: flex; align-items: center; justify-content: center; gap: 8px; }
             .finish-workout-btn:active { transform: scale(0.98); }
             .delete-workout-btn { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: #ef4444; padding: 8px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; display: flex; align-items: center; gap: 6px; min-width: 80px; justify-content: center; }
             .delete-workout-btn:active { background: rgba(239,68,68,0.25); transform: scale(0.95); }
@@ -1834,10 +1846,10 @@
             <div className="history-section">
               {(() => {
                 const grouped = groupWorkoutsByMuscle();
-                return Object.keys(grouped).map(mg => {
-                  const workouts = grouped[mg];
+                return Object.keys(grouped).sort((a, b) => Math.max(...grouped[a].map(w => new Date(w.date))) - Math.max(...grouped[b].map(w => new Date(w.date)))).map(mg => {
+                  const workouts = grouped[mg].slice().sort((a, b) => new Date(a.date) - new Date(b.date));
                   const isExpanded = expandedGroups[mg];
-                  const latest = workouts[0];
+                  const latest = workouts[workouts.length - 1];
                   const totalVol = workouts.reduce((s, w) => s + getTotalVolume(w), 0);
                   return (
                     <div key={mg} className="muscle-group-stack">
@@ -1931,7 +1943,7 @@
           {page === 'cardioHistory' && (
             <div className="history-section">
               <div className="section-title" style={{ color: '#38bdf8' }}><Calendar size={24} /> Sessions</div>
-              {[...cardioLog.map((e, i) => ({ ...e, globalIndex: i }))].sort((a, b) => new Date(b.date) - new Date(a.date)).map((entry, i) => (
+              {[...cardioLog.map((e, i) => ({ ...e, globalIndex: i }))].sort((a, b) => new Date(a.date) - new Date(b.date)).map((entry, i) => (
                 <div key={i} className="week-history-card cardio" style={{ cursor: 'default' }}>
                   <div className="week-history-header">
                     <div>
@@ -1971,7 +1983,7 @@
                   if (!byWeek[key]) byWeek[key] = { start: new Date(sun), entries: [] };
                   byWeek[key].entries.push({ ...entry, globalIndex: idx });
                 });
-                return Object.values(byWeek).sort((a, b) => b.start - a.start).map((week, wi) => {
+                return Object.values(byWeek).sort((a, b) => a.start - b.start).map((week, wi) => {
                   const sat = new Date(week.start.getTime() + 6 * DAY);
                   const label = week.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' \u2013 ' + sat.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                   const totalSteps = week.entries.reduce((s, e) => s + e.steps, 0);
@@ -2006,7 +2018,7 @@
                       </div>
                       {isExp && (
                         <div className="week-history-entries" onClick={e => e.stopPropagation()}>
-                          {week.entries.sort((a, b) => new Date(b.date) - new Date(a.date)).map((entry, i) => (
+                          {week.entries.sort((a, b) => new Date(a.date) - new Date(b.date)).map((entry, i) => (
                             <div key={i} className="week-history-entry" style={{ flexWrap: 'wrap', gap: '6px' }}>
                               <span className="week-entry-date">{new Date(entry.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
                               <span className="week-entry-type" style={{ color: 'rgba(74,222,128,0.8)' }}>
@@ -2040,7 +2052,7 @@
               {(() => {
                 const groups = {};
                 stepsLog.forEach((entry, gi) => { const t = entry.type || 'Walking'; if (!groups[t]) groups[t] = []; groups[t].push({ ...entry, globalIndex: gi }); });
-                return Object.keys(groups).sort((a, b) => new Date(groups[b][0].date) - new Date(groups[a][0].date)).map(type => {
+                return Object.keys(groups).sort((a, b) => new Date(groups[a][groups[a].length - 1].date) - new Date(groups[b][groups[b].length - 1].date)).map(type => {
                   const sessions = groups[type];
                   const totalSteps = sessions.reduce((s, e) => s + e.steps, 0);
                   const totalDur = sessions.reduce((s, e) => s + (e.duration || 0), 0);
@@ -2075,7 +2087,7 @@
                               if (!byMonth[mk]) byMonth[mk] = { label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), entries: [] };
                               byMonth[mk].entries.push(entry);
                             });
-                            return Object.keys(byMonth).sort((a,b) => b.localeCompare(a)).map(mk => {
+                            return Object.keys(byMonth).sort((a,b) => a.localeCompare(b)).map(mk => {
                               const month = byMonth[mk];
                               const mKey = type + '-' + mk;
                               const mExp = expandedStepsTypeMonths[mKey];
@@ -2093,7 +2105,7 @@
                                     </div>
                                     <div className={"expand-icon " + (mExp ? 'expanded' : '')} style={{ marginRight:'4px' }}><ChevronDown size={15} /></div>
                                   </div>
-                                  {mExp && month.entries.sort((a,b) => new Date(b.date)-new Date(a.date)).map((entry, i) => (
+                                  {mExp && month.entries.sort((a,b) => new Date(a.date)-new Date(b.date)).map((entry, i) => (
                                     <div key={i} className="individual-workout" style={{ borderColor: 'rgba(74,222,128,0.1)', cursor: 'default' }}>
                                       <div className="workout-mini-header">
                                         <div className="workout-date"><Calendar size={14} /> {formatCardioDate(entry.date)}</div>
@@ -2191,11 +2203,11 @@
                   if (!byWeek[key]) byWeek[key] = { start: new Date(sun), entries: [] };
                   byWeek[key].entries.push({ ...entry, globalIndex: idx });
                 });
-                const weeks = Object.values(byWeek).sort((a, b) => b.start - a.start);
+                const weeks = Object.values(byWeek).sort((a, b) => a.start - b.start);
                 return weeks.map((week, wi) => {
                   const sat = new Date(week.start.getTime() + 6 * DAY);
                   const label = week.start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' \u2013 ' + sat.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                  const sorted = week.entries.slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+                  const sorted = week.entries.slice().sort((a, b) => new Date(a.date) - new Date(b.date));
                   const latestEntry = sorted[0];
                   const avgWeight = (week.entries.reduce((s, e) => s + e.weight, 0) / week.entries.length);
                   const unit = latestEntry.unit || 'lbs';
@@ -2205,7 +2217,7 @@
                     return week.entries.some(e => new Date(e.date).toDateString() === dd.toDateString());
                   });
                   // Compare with previous week
-                  const prevWeek = weeks[wi + 1];
+                  const prevWeek = weeks[wi - 1];
                   let trendEl = null;
                   if (prevWeek) {
                     const prevAvg = prevWeek.entries.reduce((s, e) => s + e.weight, 0) / prevWeek.entries.length;
@@ -2515,7 +2527,7 @@
               </div>
 
               <button className="finish-workout-btn" onClick={finishWorkout}>
-                <Check size={24} /> Finish Workout
+                <Check size={18} /> Finish Workout
               </button>
 
               {/* Plate calculator per exercise */}
