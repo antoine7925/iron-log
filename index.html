@@ -573,7 +573,7 @@
       const addSet = (ei) => {
         const u = [...exercises];
         const last = u[ei].sets[u[ei].sets.length - 1];
-        u[ei].sets.push({ weight: last.weight, reps: last.reps, linked: [] });
+        u[ei].sets.push({ weight: last.weight, reps: 0, linked: [] });
         setExercises(u);
       };
       const updateSet = (ei, si, field, value) => {
