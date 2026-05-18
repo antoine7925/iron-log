@@ -1603,10 +1603,11 @@
                           const wStart = new Date(weekStart.getTime() - weeksAgo * 7 * DAY);
                           const wEnd   = new Date(weekStart.getTime() - (weeksAgo - 1) * 7 * DAY);
                           const label  = weeksAgo === 0 ? 'Now' : '-' + weeksAgo + 'w';
+                          const mgRemap = { 'Legs': 'Quads' };
                           const sessions = workoutHistory.filter(w => { const d = new Date(w.date); return d >= wStart && d < wEnd; });
                           const byMuscle = {};
                           sessions.forEach(w => {
-                            const g = w.muscleGroup || 'Other';
+                            const g = mgRemap[w.muscleGroup] || w.muscleGroup || 'Other';
                             w.exercises.forEach(ex => {
                               const s = ex.sets.filter(set => set.weight > 0 || set.reps > 0).length;
                               if (s > 0) byMuscle[g] = (byMuscle[g] || 0) + s;
