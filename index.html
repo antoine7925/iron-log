@@ -243,6 +243,8 @@
       const [showAddExercise, setShowAddExercise] = useState(false);
       const [newExerciseName, setNewExerciseName] = useState('');
       const [exerciseSearch, setExerciseSearch] = useState('');
+      const [editingExerciseName, setEditingExerciseName] = useState(null);
+      const [editExerciseDraft, setEditExerciseDraft] = useState('');
       const [customExercises, setCustomExercises] = useState({});
       const [activeExerciseCalc, setActiveExerciseCalc] = useState(null);
       const [exercisePlates45, setExercisePlates45] = useState('');
@@ -822,6 +824,31 @@
         setExerciseSearch('');
         setShowAddExercise(false);
       };
+      const renameCustomExercise = (oldName, newName) => {
+        const trimmed = newName.trim();
+        if (!trimmed || trimmed === oldName) { setEditingExerciseName(null); return; }
+        // Find which group owns this exercise
+        const mg = Object.entries(customExercises).find(([, names]) => names.includes(oldName))?.[0];
+        if (mg) {
+          const u = { ...customExercises };
+          u[mg] = u[mg].map(n => n === oldName ? trimmed : n);
+          setCustomExercises(u);
+        }
+        // Rename in current workout exercises too if present
+        setExercises(prev => prev.map(e => e.name === oldName ? { ...e, name: trimmed } : e));
+        setEditingExerciseName(null);
+      };
+      const deleteCustomExercise = (name) => {
+        const mg = Object.entries(customExercises).find(([, names]) => names.includes(name))?.[0];
+        if (mg) {
+          const u = { ...customExercises };
+          u[mg] = u[mg].filter(n => n !== name);
+          if (u[mg].length === 0) delete u[mg];
+          setCustomExercises(u);
+        }
+        // Also remove from current workout if present
+        setExercises(prev => prev.filter(e => e.name !== name));
+      };
 
       /* ── Plate calculator ── */
       const calculatePlates = (weight) => {
@@ -1151,17 +1178,28 @@
             .add-exercise-section { padding: 16px 20px 0; }
             .add-exercise-btn { width: 100%; background: rgba(255,255,255,0.05); border: 2px dashed rgba(255,255,255,0.2); color: white; padding: 15px; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
             .add-exercise-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); z-index: 2000; display: flex; flex-direction: column; padding: 16px; justify-content: flex-end; }
-            .add-exercise-content { background: #1a1a1a; border: 1px solid rgba(255,255,255,0.1); border-radius: 20px 20px 0 0; padding: 22px 20px 36px; width: 100%; max-height: 85vh; display: flex; flex-direction: column; }
+            .add-exercise-content { background: #1a1a1a; border: 1px solid rgba(255,255,255,0.1); border-radius: 20px 20px 0 0; padding: 0; width: 100%; max-height: 85dvh; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; }
+            .add-exercise-header { flex-shrink: 0; padding: 22px 20px 12px; background: #1a1a1a; position: sticky; top: 0; z-index: 1; }
             .add-exercise-title { font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: 2px; color: #ff6600; margin-bottom: 14px; }
-            .exercise-input { width: 100%; background: rgba(0,0,0,0.3); border: 2px solid rgba(255,255,255,0.2); border-radius: 12px; color: white; padding: 13px 15px; font-size: 16px; margin-bottom: 0; }
+            .exercise-input { width: 100%; background: rgba(0,0,0,0.3); border: 2px solid rgba(255,255,255,0.2); border-radius: 12px; color: white; padding: 13px 15px; font-size: 16px; box-sizing: border-box; }
             .exercise-input:focus { outline: none; border-color: #ff6600; }
-            .ex-list { flex: 1; overflow-y: auto; margin: 12px 0; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+            .ex-list { flex: 1; overflow-y: auto; padding: 0 20px 12px; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+            .ex-list-footer { flex-shrink: 0; padding: 8px 20px 36px; display: flex; justify-content: center; }
             .ex-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 14px; cursor: pointer; transition: all 0.15s ease; }
             .ex-row:active { background: rgba(255,102,0,0.15); border-color: rgba(255,102,0,0.4); }
             .ex-row-left { flex: 1; min-width: 0; }
             .ex-row-name { font-size: 15px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
             .ex-row-last { font-size: 11px; color: rgba(255,255,255,0.4); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
             .ex-row-add { background: rgba(255,102,0,0.15); border: 1px solid rgba(255,102,0,0.35); color: #ff6600; width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; flex-shrink: 0; }
+            .ex-row-actions { display: flex; gap: 5px; flex-shrink: 0; align-items: center; }
+            .ex-edit-btn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); color: rgba(255,255,255,0.5); width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 13px; cursor: pointer; flex-shrink: 0; }
+            .ex-edit-btn:active { background: rgba(255,102,0,0.2); border-color: #ff6600; color: #ff6600; }
+            .ex-delete-btn { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: rgba(239,68,68,0.6); width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 13px; cursor: pointer; flex-shrink: 0; }
+            .ex-delete-btn:active { background: rgba(239,68,68,0.25); border-color: #ef4444; color: #ef4444; }
+            .ex-edit-row { display: flex; gap: 6px; align-items: center; background: rgba(255,102,0,0.08); border: 1px solid rgba(255,102,0,0.4); border-radius: 12px; padding: 8px 10px; }
+            .ex-edit-input { flex: 1; background: transparent; border: none; outline: none; color: #fff; font-size: 15px; font-weight: 600; }
+            .ex-edit-save { background: rgba(255,102,0,0.25); border: 1px solid #ff6600; color: #ff6600; border-radius: 7px; padding: 4px 10px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+            .ex-edit-cancel { background: transparent; border: 1px solid rgba(255,255,255,0.15); color: rgba(255,255,255,0.4); border-radius: 7px; padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
             .ex-new-badge { font-size: 9px; font-weight: 800; background: rgba(255,102,0,0.2); border: 1px solid rgba(255,102,0,0.4); color: #ff6600; padding: 2px 6px; border-radius: 5px; letter-spacing: 0.5px; margin-left: 6px; flex-shrink: 0; }
             .ex-section-label { font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 1.2px; padding: 4px 2px 2px; }
             .modal-btn-group { display: flex; gap: 10px; }
@@ -3330,44 +3368,45 @@
 
               {/* Add exercise modal */}
               {showAddExercise && currentWorkout && (() => {
-                // Build full exercise library: history + custom + defaults for current group
+                // ── build library (defensive: guard against missing exercises/sets arrays) ──
                 const inWorkout = new Set(exercises.map(e => e.name));
                 const allNames = new Set();
-                workoutHistory.forEach(w => w.exercises.forEach(ex => allNames.add(ex.name)));
-                Object.values(customExercises).flat().forEach(n => allNames.add(n));
+                workoutHistory.forEach(w => (w.exercises || []).forEach(ex => ex?.name && allNames.add(ex.name)));
+                Object.values(customExercises).forEach(arr => (Array.isArray(arr) ? arr : []).forEach(n => n && allNames.add(n)));
                 (MUSCLE_GROUPS[currentWorkout.muscleGroup] || []).forEach(n => allNames.add(n));
 
-                // Last performance lookup
-                const lastPerf = (name) => {
-                  const sorted = [...workoutHistory].sort((a, b) => new Date(b.date) - new Date(a.date));
-                  for (const w of sorted) {
-                    const ex = w.exercises.find(e => e.name === name);
-                    if (ex) {
-                      const filled = ex.sets.filter(s => s.weight > 0 || s.reps > 0);
-                      if (filled.length > 0) {
-                        const dateStr = new Date(w.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                        const summary = filled.map(s => (s.weight > 0 ? s.weight + 'lb' : '') + (s.weight > 0 && s.reps > 0 ? '×' : '') + (s.reps > 0 ? s.reps : '')).join(' · ');
-                        return dateStr + ' — ' + summary;
-                      }
+                // Set of all custom exercise names (any group) for edit/delete eligibility
+                const allCustomNames = new Set(Object.values(customExercises).flat().filter(Boolean));
+
+                // last-performance cache (built once, O(history) not O(history*exercises))
+                const perfCache = {};
+                const sortedHistory = [...workoutHistory].sort((a, b) => new Date(b.date) - new Date(a.date));
+                sortedHistory.forEach(w => {
+                  (w.exercises || []).forEach(ex => {
+                    if (!ex?.name || perfCache[ex.name]) return;
+                    const filled = (ex.sets || []).filter(s => (s?.weight > 0) || (s?.reps > 0));
+                    if (filled.length > 0) {
+                      const dateStr = new Date(w.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      const summary = filled.map(s => (s.weight > 0 ? s.weight + 'lb' : '') + (s.weight > 0 && s.reps > 0 ? '×' : '') + (s.reps > 0 ? s.reps : '')).join(' · ');
+                      perfCache[ex.name] = dateStr + ' — ' + summary;
                     }
-                  }
-                  return null;
-                };
+                  });
+                });
 
                 const q = exerciseSearch.trim().toLowerCase();
                 const known = [...allNames].filter(n => !q || n.toLowerCase().includes(q));
                 const isNew = q && ![...allNames].some(n => n.toLowerCase() === q);
                 const currentGroupDefault = new Set(MUSCLE_GROUPS[currentWorkout.muscleGroup] || []);
 
-                // Build name→group lookup: MUSCLE_GROUPS, then customExercises, then workoutHistory
+                // name→group lookup
                 const nameToGroup = {};
                 Object.entries(MUSCLE_GROUPS).forEach(([g, names]) => names.forEach(n => { nameToGroup[n] = g; }));
-                Object.entries(customExercises).forEach(([g, names]) => names.forEach(n => { if (!nameToGroup[n]) nameToGroup[n] = g; }));
-                [...workoutHistory].sort((a, b) => new Date(b.date) - new Date(a.date)).forEach(w => {
-                  w.exercises.forEach(ex => { if (!nameToGroup[ex.name]) nameToGroup[ex.name] = w.muscleGroup || 'Other'; });
+                Object.entries(customExercises).forEach(([g, names]) => (Array.isArray(names) ? names : []).forEach(n => { if (n && !nameToGroup[n]) nameToGroup[n] = g; }));
+                sortedHistory.forEach(w => {
+                  (w.exercises || []).forEach(ex => { if (ex?.name && !nameToGroup[ex.name]) nameToGroup[ex.name] = w.muscleGroup || 'Other'; });
                 });
 
-                // Sort: current group first, then other groups A-Z, within each group A-Z
+                // sort: current group first, then A-Z by group, then A-Z by name
                 const curMg = currentWorkout.muscleGroup;
                 known.sort((a, b) => {
                   const ga = nameToGroup[a] || 'Other', gb = nameToGroup[b] || 'Other';
@@ -3377,51 +3416,78 @@
                   return a.localeCompare(b);
                 });
 
+                const closeModal = () => { setShowAddExercise(false); setExerciseSearch(''); setEditingExerciseName(null); };
+
+                let lastGroup = null;
+                const rows = known.map(name => {
+                  const perf = perfCache[name] || null;
+                  const isDefault = currentGroupDefault.has(name);
+                  const isCustom = allCustomNames.has(name);
+                  const group = nameToGroup[name] || 'Other';
+                  const showHeader = group !== lastGroup;
+                  lastGroup = group;
+                  const isEditing = editingExerciseName === name;
+                  return (
+                    <React.Fragment key={name}>
+                      {showHeader && <div className="ex-section-label" style={{ marginTop: '6px' }}>{group}</div>}
+                      {isEditing ? (
+                        <div className="ex-edit-row">
+                          <input
+                            className="ex-edit-input"
+                            autoFocus
+                            value={editExerciseDraft}
+                            onChange={e => setEditExerciseDraft(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') renameCustomExercise(name, editExerciseDraft);
+                              if (e.key === 'Escape') setEditingExerciseName(null);
+                            }}
+                          />
+                          <button className="ex-edit-save" onClick={() => renameCustomExercise(name, editExerciseDraft)}>Save</button>
+                          <button className="ex-edit-cancel" onClick={() => setEditingExerciseName(null)}>✕</button>
+                        </div>
+                      ) : (
+                        <div className="ex-row" style={inWorkout.has(name) ? { opacity: 0.5, cursor: 'default' } : {}} onClick={() => !inWorkout.has(name) && addCustomExercise(name)}>
+                          <div className="ex-row-left">
+                            <div className="ex-row-name">{name}{isDefault && !perf && <span className="ex-new-badge">default</span>}</div>
+                            {perf && <div className="ex-row-last">{perf}</div>}
+                            {!perf && !isDefault && <div className="ex-row-last">No history yet</div>}
+                          </div>
+                          <div className="ex-row-actions" onClick={e => e.stopPropagation()}>
+                            {isCustom && <button className="ex-edit-btn" title="Rename" onClick={() => { setEditingExerciseName(name); setEditExerciseDraft(name); }}>✏</button>}
+                            {isCustom && <button className="ex-delete-btn" title="Delete" onClick={() => deleteCustomExercise(name)}>✕</button>}
+                            {inWorkout.has(name)
+                              ? <div style={{ color: '#4ade80', fontSize: '16px' }}>✓</div>
+                              : <div className="ex-row-add" onClick={() => addCustomExercise(name)}>+</div>}
+                          </div>
+                        </div>
+                      )}
+                    </React.Fragment>
+                  );
+                });
+
                 return (
-                  <div className="add-exercise-modal" onClick={() => { setShowAddExercise(false); setExerciseSearch(''); }}>
+                  <div className="add-exercise-modal" onClick={closeModal}>
                     <div className="add-exercise-content" onClick={e => e.stopPropagation()}>
-                      <div className="add-exercise-title">Add Exercise</div>
-                      <input
-                        className="exercise-input"
-                        value={exerciseSearch}
-                        onChange={e => setExerciseSearch(e.target.value)}
-                        placeholder="Search or type new exercise…"
-                        autoFocus
-                        onKeyDown={e => { if (e.key === 'Enter' && exerciseSearch.trim()) addCustomExercise(exerciseSearch.trim()); }}
-                      />
+                      <div className="add-exercise-header">
+                        <div className="add-exercise-title">Add Exercise</div>
+                        <input
+                          className="exercise-input"
+                          value={exerciseSearch}
+                          onChange={e => { setExerciseSearch(e.target.value); setEditingExerciseName(null); }}
+                          placeholder="Search or type new exercise…"
+                          autoFocus
+                          onKeyDown={e => { if (e.key === 'Enter' && exerciseSearch.trim()) addCustomExercise(exerciseSearch.trim()); }}
+                        />
+                      </div>
                       <div className="ex-list">
-                        {(() => {
-                          let lastGroup = null;
-                          return known.map(name => {
-                            const perf = lastPerf(name);
-                            const isDefault = currentGroupDefault.has(name);
-                            const group = nameToGroup[name] || 'Other';
-                            const showHeader = group !== lastGroup;
-                            lastGroup = group;
-                            return (
-                              <React.Fragment key={name}>
-                                {showHeader && <div className="ex-section-label" style={{ marginTop: lastGroup !== group ? '8px' : '0' }}>{group}</div>}
-                                <div className="ex-row" onClick={() => !inWorkout.has(name) && addCustomExercise(name)} style={inWorkout.has(name) ? { opacity: 0.4, cursor: 'default' } : {}}>
-                                  <div className="ex-row-left">
-                                    <div className="ex-row-name">{name}{isDefault && !perf && <span className="ex-new-badge">default</span>}</div>
-                                    {perf && <div className="ex-row-last">{perf}</div>}
-                                    {!perf && !isDefault && <div className="ex-row-last">No history yet</div>}
-                                  </div>
-                                  {inWorkout.has(name)
-                                    ? <div style={{ color: '#4ade80', fontSize: '16px', flexShrink: 0 }}>✓</div>
-                                    : <div className="ex-row-add">+</div>}
-                                </div>
-                              </React.Fragment>
-                            );
-                          });
-                        })()}
+                        {rows}
                         {isNew && (
                           <>
                             <div className="ex-section-label" style={{ marginTop: '6px' }}>New exercise</div>
                             <div className="ex-row" style={{ borderColor: 'rgba(255,102,0,0.35)' }} onClick={() => addCustomExercise(exerciseSearch.trim())}>
                               <div className="ex-row-left">
                                 <div className="ex-row-name">{exerciseSearch.trim()} <span className="ex-new-badge">NEW</span></div>
-                                <div className="ex-row-last">Will be saved to your library</div>
+                                <div className="ex-row-last">Tap + to save to your library</div>
                               </div>
                               <div className="ex-row-add">+</div>
                             </div>
@@ -3433,7 +3499,9 @@
                           </div>
                         )}
                       </div>
-                      <button className="modal-btn-secondary" style={{ flex: 'none', padding: '8px 24px', fontSize: '13px', width: 'auto', alignSelf: 'center' }} onClick={() => { setShowAddExercise(false); setExerciseSearch(''); }}>Cancel</button>
+                      <div className="ex-list-footer">
+                        <button className="modal-btn-secondary" style={{ padding: '8px 24px', fontSize: '13px', width: 'auto' }} onClick={closeModal}>Cancel</button>
+                      </div>
                     </div>
                   </div>
                 );
