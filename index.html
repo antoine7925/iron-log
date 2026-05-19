@@ -112,13 +112,13 @@
     /* ── Muscle Groups ── */
     const MUSCLE_GROUPS = {
       'Chest': ['Dumbbell Press', 'Incline Dumbbell Press', 'Chest Dips','Cable Flyes', ],
-      'Back': ['Lat Pulldown', 'Seated Cable Rows', 'Pull-Over', 'Pull-ups', 'RDL', ],
+      'Back': ['Lat Pulldown', 'Seated Cable Rows', 'Pull-ups', 'RDL', 'Pull-Over', ],
       'Quads': ['Leg Press', 'Leg Extensions', 'Bulgarian Split Squats' ],
-      'Hamstrings': ['Seated Leg Curls', 'Lying Leg Curls', 'Nordic Curls', 'Good Mornings', 'Glute Ham Raise' ],
+      'Hamstrings': ['Seated Leg Curls', 'Lying Leg Curls', 'RDL'],
       'Shoulders': ['Overhead Press', 'Lateral Raises Cable', 'Rear Delt Flyes', 'Front Raises', 'Shrugs' ],
       'Biceps': ['Barbell Curls', 'DB Curls', 'Cable Curls', ],
-      'Triceps': ['Pushdowns', 'Skull Crushers', 'Overhead Extension', 'Close Grip Bench' ],
-      'Calves': ['StandingCalf Raises', 'Seated Calf Raises', 'Calf Press on Leg Press' ],
+      'Triceps': ['Skull Crushers', 'Overhead Extension', 'Pushdowns', 'Close Grip Bench' ],
+      'Calves': ['Standing Calf Raises', 'Seated Calf Raises', 'Calf Press on Leg Press' ],
       'Glutes': ['Hip Thrusts', 'Sumo Deadlift' ]
     };
 
@@ -229,9 +229,14 @@
       /* ── State ── */
       const [page, setPage] = useState('history');
       const [workoutHistory, setWorkoutHistory] = useState([]);
-      const [currentWorkout, setCurrentWorkout] = useState(null);
+      const [workoutSlots, setWorkoutSlots] = useState([null, null, null]);
+      const [activeSlotIndex, setActiveSlotIndex] = useState(null);
       const [showGroupSelect, setShowGroupSelect] = useState(false);
       const [exercises, setExercises] = useState([]);
+      // derived – always reflects live exercises for the active slot
+      const currentWorkout = activeSlotIndex !== null && workoutSlots[activeSlotIndex]
+        ? { ...workoutSlots[activeSlotIndex], exercises }
+        : null;
       const [showPlateCalculator, setShowPlateCalculator] = useState(false);
       const [plateWeight, setPlateWeight] = useState('');
       const [numPlates45, setNumPlates45] = useState('');
@@ -261,7 +266,10 @@
       const [phaseType, setPhaseType] = useState('diet');
       const [viewingPhase, setViewingPhase] = useState(null);
       const [phaseConfirmClear, setPhaseConfirmClear] = useState(false);
-      const [phaseSections, setPhaseSections] = useState({ workout: true, cardio: true, steps: true, weight: true });
+      const [archiveMode, setArchiveMode] = useState('from_last'); // 'all' | 'from_last' | 'custom'
+      const [archiveStartDate, setArchiveStartDate] = useState('');
+      const [archiveEndDate, setArchiveEndDate] = useState('');
+      const [phaseSections, setPhaseSections] = useState({ workout: false, cardio: false, steps: false, weight: false });
       const togglePhaseSection = (key) => setPhaseSections(p => ({ ...p, [key]: !p[key] }));
 
       // Cardio state
@@ -312,9 +320,9 @@
       const [summaryExpanded, setSummaryExpanded] = useState(true);
       const [weightExpanded, setWeightExpanded] = useState(true);
       const [workoutVolExpanded, setWorkoutVolExpanded] = useState(true);
-      const [setsWeeklyExpanded, setSetsWeeklyExpanded] = useState(true);
-      const [cardioExpanded, setCardioExpanded] = useState(true);
-      const [stepsExpanded, setStepsExpanded] = useState(true);
+      const [setsWeeklyExpanded, setSetsWeeklyExpanded] = useState(false);
+      const [cardioExpanded, setCardioExpanded] = useState(false);
+      const [stepsExpanded, setStepsExpanded] = useState(false);
       const [editingWeightIndex, setEditingWeightIndex] = useState(null);
       const [editWeightValue, setEditWeightValue] = useState('');
       const [editWeightDate, setEditWeightDate] = useState('');
@@ -492,6 +500,17 @@
         if (savedWeight) setWeightLog(JSON.parse(savedWeight));
         const savedPhases = localStorage.getItem('phases');
         if (savedPhases) setPhases(JSON.parse(savedPhases));
+        const savedSlots = localStorage.getItem('workoutSlots');
+        if (savedSlots) {
+          const slots = JSON.parse(savedSlots);
+          setWorkoutSlots(slots);
+          const savedIdx = localStorage.getItem('activeSlotIndex');
+          if (savedIdx !== null) {
+            const idx = parseInt(savedIdx);
+            setActiveSlotIndex(idx);
+            setExercises(slots[idx]?.exercises || []);
+          }
+        }
       }, []);
 
       useEffect(() => {
@@ -504,18 +523,56 @@
       useEffect(() => { localStorage.setItem('stepsLog', JSON.stringify(stepsLog)); }, [stepsLog]);
       useEffect(() => { localStorage.setItem('weightLog', JSON.stringify(weightLog)); }, [weightLog]);
       useEffect(() => { localStorage.setItem('phases', JSON.stringify(phases)); }, [phases]);
+      useEffect(() => { localStorage.setItem('workoutSlots', JSON.stringify(workoutSlots)); }, [workoutSlots]);
+      useEffect(() => {
+        if (activeSlotIndex !== null) localStorage.setItem('activeSlotIndex', String(activeSlotIndex));
+        else localStorage.removeItem('activeSlotIndex');
+      }, [activeSlotIndex]);
+      // keep active slot in sync with live exercises state
+      useEffect(() => {
+        if (activeSlotIndex !== null) {
+          setWorkoutSlots(prev => {
+            if (!prev[activeSlotIndex]) return prev;
+            const updated = [...prev];
+            updated[activeSlotIndex] = { ...updated[activeSlotIndex], exercises };
+            return updated;
+          });
+        }
+      }, [exercises]);
 
-      /* ── Phases ── */
+      /* ── Phases / Archives ── */
       const savePhase = () => {
         if (!phaseName.trim()) return;
-        const dates = [
-          ...workoutHistory.map(w => w.date),
-          ...cardioLog.map(c => c.date),
-          ...stepsLog.map(s => s.date),
-          ...weightLog.map(w => w.date),
+        // Compute filter range
+        const lastArchiveDate = phases.length > 0
+          ? new Date(Math.max(...phases.map(p => new Date(p.savedAt))))
+          : null;
+        let filterStart = null;
+        let filterEnd = null;
+        if (archiveMode === 'from_last') {
+          filterStart = lastArchiveDate;
+        } else if (archiveMode === 'custom') {
+          filterStart = archiveStartDate ? new Date(archiveStartDate) : null;
+          filterEnd = archiveEndDate ? new Date(archiveEndDate + 'T23:59:59') : null;
+        }
+        const inRange = (dateStr) => {
+          const d = new Date(dateStr);
+          if (filterStart && d <= filterStart) return false;
+          if (filterEnd && d > filterEnd) return false;
+          return true;
+        };
+        const filteredWorkouts = archiveMode === 'all' ? [...workoutHistory] : workoutHistory.filter(w => inRange(w.date));
+        const filteredCardio   = archiveMode === 'all' ? [...cardioLog]      : cardioLog.filter(c => inRange(c.date));
+        const filteredSteps    = archiveMode === 'all' ? [...stepsLog]       : stepsLog.filter(s => inRange(s.date));
+        const filteredWeight   = archiveMode === 'all' ? [...weightLog]      : weightLog.filter(w => inRange(w.date));
+        const allDates = [
+          ...filteredWorkouts.map(w => w.date),
+          ...filteredCardio.map(c => c.date),
+          ...filteredSteps.map(s => s.date),
+          ...filteredWeight.map(w => w.date),
         ].map(d => new Date(d)).filter(d => !isNaN(d));
-        const startDate = dates.length ? new Date(Math.min(...dates)).toISOString() : new Date().toISOString();
-        const endDate = dates.length ? new Date(Math.max(...dates)).toISOString() : new Date().toISOString();
+        const startDate = allDates.length ? new Date(Math.min(...allDates)).toISOString() : new Date().toISOString();
+        const endDate   = allDates.length ? new Date(Math.max(...allDates)).toISOString() : new Date().toISOString();
         const phase = {
           id: Date.now(),
           name: phaseName.trim(),
@@ -523,19 +580,33 @@
           savedAt: new Date().toISOString(),
           startDate,
           endDate,
-          workoutHistory: [...workoutHistory],
-          cardioLog: [...cardioLog],
-          stepsLog: [...stepsLog],
-          weightLog: [...weightLog],
+          workoutHistory: filteredWorkouts,
+          cardioLog: filteredCardio,
+          stepsLog: filteredSteps,
+          weightLog: filteredWeight,
         };
         setPhases(prev => [phase, ...prev]);
-        // Clear active logs
-        setWorkoutHistory([]); localStorage.removeItem('workoutHistory');
-        setCardioLog([]); localStorage.removeItem('cardioLog');
-        setStepsLog([]); localStorage.removeItem('stepsLog');
-        setWeightLog([]); localStorage.removeItem('weightLog');
+        // Remove archived entries from active logs
+        if (archiveMode === 'all') {
+          setWorkoutHistory([]); localStorage.removeItem('workoutHistory');
+          setCardioLog([]);      localStorage.removeItem('cardioLog');
+          setStepsLog([]);       localStorage.removeItem('stepsLog');
+          setWeightLog([]);      localStorage.removeItem('weightLog');
+        } else {
+          const archivedWorkoutIds = new Set(filteredWorkouts.map(w => w.date));
+          const archivedCardioIds  = new Set(filteredCardio.map(c => c.date));
+          const archivedStepsIds   = new Set(filteredSteps.map(s => s.date));
+          const archivedWeightIds  = new Set(filteredWeight.map(w => w.date));
+          setWorkoutHistory(prev => prev.filter(w => !archivedWorkoutIds.has(w.date)));
+          setCardioLog(prev => prev.filter(c => !archivedCardioIds.has(c.date)));
+          setStepsLog(prev => prev.filter(s => !archivedStepsIds.has(s.date)));
+          setWeightLog(prev => prev.filter(w => !archivedWeightIds.has(w.date)));
+        }
         setPhaseName('');
         setPhaseType('diet');
+        setArchiveMode('from_last');
+        setArchiveStartDate('');
+        setArchiveEndDate('');
         setShowSavePhaseModal(false);
         setPhaseConfirmClear(false);
       };
@@ -580,8 +651,22 @@
         e.target.value = '';
       };
 
+      /* ── Workout slot helpers ── */
+      const switchSlot = (idx) => {
+        setActiveSlotIndex(idx);
+        setExercises(workoutSlots[idx]?.exercises || []);
+        setPage('workout');
+      };
+      const clearSlot = (slots, idx) => {
+        const updated = [...slots];
+        updated[idx] = null;
+        return updated;
+      };
+
       /* ── Workout actions ── */
       const startWorkout = (muscleGroup) => {
+        const emptyIdx = workoutSlots.findIndex(s => s === null);
+        if (emptyIdx === -1) { alert('You already have 3 active workouts. Finish or discard one first.'); return; }
         const defaultExercises = MUSCLE_GROUPS[muscleGroup] || [];
         const customExercisesForGroup = customExercises[muscleGroup] || [];
         const groupExercises = [...defaultExercises, ...customExercisesForGroup];
@@ -595,7 +680,10 @@
             : [{ weight: 0, reps: 0, linked: [] }];
           return { name, sets: copiedSets, completed: false, notes: lastExercise?.notes || '' };
         });
-        setCurrentWorkout({ muscleGroup, date: new Date().toISOString(), exercises: initialExercises });
+        const newSlots = [...workoutSlots];
+        newSlots[emptyIdx] = { muscleGroup, date: new Date().toISOString(), exercises: initialExercises };
+        setWorkoutSlots(newSlots);
+        setActiveSlotIndex(emptyIdx);
         setExercises(initialExercises);
         setPage('workout');
         setShowGroupSelect(false);
@@ -614,6 +702,8 @@
       };
       const viewWorkout = (workout) => { setViewingWorkout(workout); setPage('detail'); };
       const continueWorkout = (workout) => {
+        const emptyIdx = workoutSlots.findIndex(s => s === null);
+        if (emptyIdx === -1) { alert('You already have 3 active workouts. Finish or discard one first.'); return; }
         const defaultExercises = MUSCLE_GROUPS[workout.muscleGroup] || [];
         const customExercisesForGroup = customExercises[workout.muscleGroup] || [];
         const groupExercises = [...defaultExercises, ...customExercisesForGroup];
@@ -624,7 +714,10 @@
             : [{ weight: 0, reps: 0, linked: [] }];
           return { name, sets: copiedSets, completed: false, notes: prev?.notes || '' };
         });
-        setCurrentWorkout({ muscleGroup: workout.muscleGroup, date: new Date().toISOString(), exercises: exs });
+        const newSlots = [...workoutSlots];
+        newSlots[emptyIdx] = { muscleGroup: workout.muscleGroup, date: new Date().toISOString(), exercises: exs };
+        setWorkoutSlots(newSlots);
+        setActiveSlotIndex(emptyIdx);
         setExercises(exs);
         setPage('workout');
       };
@@ -701,9 +794,20 @@
         );
         const workout = { ...currentWorkout, exercises: filledExercises, date: new Date().toISOString() };
         setWorkoutHistory([workout, ...workoutHistory]);
+        const clearedSlots = clearSlot(workoutSlots, activeSlotIndex);
+        setWorkoutSlots(clearedSlots);
+        const nextIdx = clearedSlots.findIndex(s => s !== null);
+        setActiveSlotIndex(nextIdx !== -1 ? nextIdx : null);
+        setExercises(nextIdx !== -1 ? clearedSlots[nextIdx].exercises : []);
         setPage('history');
-        setCurrentWorkout(null);
-        setExercises([]);
+      };
+      const discardWorkout = () => {
+        const clearedSlots = clearSlot(workoutSlots, activeSlotIndex);
+        setWorkoutSlots(clearedSlots);
+        const nextIdx = clearedSlots.findIndex(s => s !== null);
+        setActiveSlotIndex(nextIdx !== -1 ? nextIdx : null);
+        setExercises(nextIdx !== -1 ? clearedSlots[nextIdx].exercises : []);
+        setPage('history');
       };
       const addCustomExercise = (nameArg) => {
         const name = (nameArg || newExerciseName).trim();
@@ -901,6 +1005,9 @@
             .start-steps-btn { width: 100%; background: linear-gradient(135deg, #16a34a 0%, #4ade80 100%); color: white; border: none; padding: 18px; border-radius: 16px; font-size: 18px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; box-shadow: 0 8px 24px rgba(74, 222, 128, 0.35); display: flex; align-items: center; justify-content: center; gap: 10px; transition: all 0.3s ease; }
             .start-steps-btn:active { transform: scale(0.98); }
             .resume-workout-btn { width: 100%; background: rgba(255,165,0,0.12); border: 1px solid rgba(255,165,0,0.5); color: #ffa500; padding: 14px; border-radius: 14px; font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; }
+            .workout-slot-tabs { display: flex; gap: 8px; padding: 8px 16px 0; }
+            .workout-slot-tab { flex: 1; padding: 8px 6px; border-radius: 10px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; border: 1px solid rgba(255,165,0,0.3); background: rgba(255,165,0,0.07); color: rgba(255,165,0,0.6); transition: all 0.2s; }
+            .workout-slot-tab.active { background: rgba(255,165,0,0.2); border-color: #ffa500; color: #ffa500; }
             .history-nav-btn { width: 100%; border: none; padding: 16px 20px; border-radius: 14px; font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; transition: all 0.2s ease; }
             .history-nav-btn:active { transform: scale(0.98); }
             .history-nav-left { display: flex; align-items: center; gap: 12px; }
@@ -1217,11 +1324,26 @@
               <div className="header"><div className="header-content"><h1>IRON LOG</h1></div></div>
             )}
             {page === 'workout' && currentWorkout && (
-              <div className="workout-header">
-                <button className="back-btn" onClick={() => setPage('history')}><ChevronLeft size={24} /></button>
-                <h2>{currentWorkout.muscleGroup}</h2>
-                <button className="plate-calc-btn" onClick={() => setShowPlateCalculator(true)}>Plates</button>
-                <button className="plate-calc-btn" style={{ background: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.5)', color: '#ef4444' }} onClick={() => { setCurrentWorkout(null); setExercises([]); setPage('history'); }}>&#10005; Discard</button>
+              <div>
+                <div className="workout-header">
+                  <button className="back-btn" onClick={() => setPage('history')}><ChevronLeft size={24} /></button>
+                  <h2>{currentWorkout.muscleGroup}</h2>
+                  <button className="plate-calc-btn" onClick={() => setShowPlateCalculator(true)}>Plates</button>
+                  <button className="plate-calc-btn" style={{ background: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.5)', color: '#ef4444' }} onClick={discardWorkout}>&#10005; Discard</button>
+                </div>
+                {workoutSlots.filter(s => s !== null).length > 1 && (
+                  <div className="workout-slot-tabs">
+                    {workoutSlots.map((slot, idx) => slot && (
+                      <button
+                        key={idx}
+                        className={"workout-slot-tab" + (idx === activeSlotIndex ? ' active' : '')}
+                        onClick={() => switchSlot(idx)}
+                      >
+                        {slot.muscleGroup}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {page === 'detail' && viewingWorkout && (
@@ -1243,7 +1365,7 @@
             {page === 'cardioHistory' && renderSubHeader('Cardio History', '#0ea5e9', () => setPage('history'))}
             {page === 'stepsHistory' && renderSubHeader('Steps History', '#16a34a', () => setPage('history'))}
             {page === 'weightHistory' && renderSubHeader('Weight History', '#b45309', () => setPage('history'))}
-            {page === 'phases' && renderSubHeader('Phases', '#7c3aed', () => setPage('history'))}
+            {page === 'phases' && renderSubHeader('Archives', '#7c3aed', () => setPage('history'))}
             {page === 'phaseDetail' && viewingPhase && renderSubHeader(viewingPhase.name, '#7c3aed', () => { setPage('phases'); setViewingPhase(null); })}
             <Stopwatch />
           </div>
@@ -1261,16 +1383,18 @@
                   <button className="start-steps-btn" style={{ flex: 1, fontSize: '15px', padding: '14px 8px' }} onClick={() => setShowStepsModal(true)}><FootprintsIcon size={20} /> Steps</button>
                   <button className="start-weight-btn" style={{ flex: 1, fontSize: '15px', padding: '14px 8px' }} onClick={() => setShowWeightModal(true)}><ScaleIcon size={20} /> Weight</button>
                 </div>
-                {currentWorkout && (
-                  <button className="resume-workout-btn" onClick={() => setPage('workout')}>&#9654; Resume: {currentWorkout.muscleGroup}</button>
-                )}
+                {workoutSlots.map((slot, idx) => slot && (
+                  <button key={idx} className="resume-workout-btn" onClick={() => switchSlot(idx)}>
+                    &#9654; Resume: {slot.muscleGroup}
+                  </button>
+                ))}
               </div>
 
               <div className="history-section">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                   <div className="section-title" style={{ marginBottom: 0 }}><TrendingUp size={24} /> Dashboard</div>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button className="backup-trigger-btn" onClick={() => setPage('phases')}>&#127942; Phases</button>
+                    <button className="backup-trigger-btn" onClick={() => setPage('phases')}>&#127942; Archives</button>
                     <button className="backup-trigger-btn" onClick={() => { setImportStatus(null); setShowBackupModal(true); }}>&#128190; Backup</button>
                   </div>
                 </div>
@@ -1902,7 +2026,7 @@
                 <div className="muscle-group-modal">
                   <div className="modal-header"><h2>Select Muscle Group</h2></div>
                   <div className="muscle-groups">
-                    {Object.keys(MUSCLE_GROUPS).map(group => (
+                    {Object.keys(MUSCLE_GROUPS).sort((a, b) => a.localeCompare(b)).map(group => (
                       <button key={group} className="muscle-group-btn" onClick={() => startWorkout(group)}>
                         {group} <ChevronDown size={20} />
                       </button>
@@ -2146,7 +2270,7 @@
             <div className="history-section">
               {(() => {
                 const grouped = groupWorkoutsByMuscle();
-                return Object.keys(grouped).sort((a, b) => Math.max(...grouped[a].map(w => new Date(w.date))) - Math.max(...grouped[b].map(w => new Date(w.date)))).map(mg => {
+                return Object.keys(grouped).sort((a, b) => a.localeCompare(b)).map(mg => {
                   const workouts = grouped[mg].slice().sort((a, b) => new Date(b.date) - new Date(a.date));
                   const isExpanded = expandedGroups[mg];
                   const latest = workouts[0];
@@ -2633,14 +2757,14 @@
           {page === 'phases' && (
             <div className="history-section">
               <button className="new-phase-btn" onClick={() => { setShowSavePhaseModal(true); setPhaseConfirmClear(false); }}>
-                &#127942; Save Current Logs as New Phase
+                &#127942; Save Current Logs as Archive
               </button>
 
               {phases.length === 0 && (
                 <div className="empty-state">
                   <div className="empty-state-icon" style={{ fontSize: '48px' }}>&#127942;</div>
-                  <p>No phases saved yet</p>
-                  <p style={{ fontSize: '14px', marginTop: '10px', opacity: 0.6 }}>Save your current logs to start a new phase and keep a snapshot of this period.</p>
+                  <p>No archives saved yet</p>
+                  <p style={{ fontSize: '14px', marginTop: '10px', opacity: 0.6 }}>Save your current logs as an archive and start fresh.</p>
                 </div>
               )}
 
@@ -2675,8 +2799,8 @@
               {showSavePhaseModal && (
                 <div className="phase-modal" onClick={() => setShowSavePhaseModal(false)}>
                   <div className="phase-modal-content" onClick={e => e.stopPropagation()}>
-                    <div className="phase-modal-title">Save Phase</div>
-                    <div className="phase-modal-sub">Name this period, then your current logs will be archived and cleared so you can start fresh.</div>
+                    <div className="phase-modal-title">New Archive</div>
+                    <div className="phase-modal-sub">Name this period, choose which data to include, then your logs will be archived and cleared so you can start fresh.</div>
                     <input
                       className="phase-name-input"
                       placeholder="Phase name (e.g. Summer Cut 2026)"
@@ -2689,8 +2813,38 @@
                         <button key={t} className={"phase-type-btn " + (phaseType === t ? 'selected' : '')} onClick={() => setPhaseType(t)}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>
                       ))}
                     </div>
+                    {/* ── Date range selector ── */}
+                    <div style={{ marginBottom: '16px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Data to include</div>
+                      <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                        {[
+                          { value: 'from_last', label: phases.length > 0 ? 'Since last archive' : 'All data' },
+                          { value: 'custom', label: 'Date range' },
+                          { value: 'all', label: 'All data' },
+                        ].filter(o => !(o.value === 'all' && phases.length === 0)).map(o => (
+                          <button key={o.value} className={"phase-type-btn " + (archiveMode === o.value ? 'selected' : '')} onClick={() => { setArchiveMode(o.value); setPhaseConfirmClear(false); }}>{o.label}</button>
+                        ))}
+                      </div>
+                      {archiveMode === 'custom' && (
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>From</div>
+                            <input type="date" className="phase-name-input" style={{ marginBottom: 0, fontSize: '14px', padding: '10px 12px', colorScheme: 'dark' }} value={archiveStartDate} onChange={e => { setArchiveStartDate(e.target.value); setPhaseConfirmClear(false); }} />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginBottom: '4px' }}>To</div>
+                            <input type="date" className="phase-name-input" style={{ marginBottom: 0, fontSize: '14px', padding: '10px 12px', colorScheme: 'dark' }} value={archiveEndDate} onChange={e => { setArchiveEndDate(e.target.value); setPhaseConfirmClear(false); }} />
+                          </div>
+                        </div>
+                      )}
+                      {archiveMode === 'from_last' && phases.length > 0 && (
+                        <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)' }}>
+                          Last archive: {new Date(Math.max(...phases.map(p => new Date(p.savedAt)))).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        </div>
+                      )}
+                    </div>
                     <div className="phase-warn">
-                      ⚠️ This will <strong>clear</strong> your active workout history, cardio, steps, and weight logs. They will be saved inside this phase and you can revisit them anytime.
+                      ⚠️ Archived entries will be <strong>removed</strong> from your active logs. They will be saved inside this archive and you can revisit them anytime.
                     </div>
                     {!phaseConfirmClear ? (
                       <button className="phase-save-btn" disabled={!phaseName.trim()} onClick={() => setPhaseConfirmClear(true)}>
